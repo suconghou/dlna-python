@@ -140,6 +140,7 @@ class xmlParser:
 class Device:
     def __init__(self, info):
         self.info = info
+        self.header = {"Content-Type": "text/xml"}
 
     def url(self):
         part = ''
@@ -152,32 +153,33 @@ class Device:
         controlURL = self.url()
         serviceId = 'urn:upnp-org:serviceId:AVTransport'
         data = XmlText().setPlayURLXml(url)
-        return Req({}).request(controlURL, serviceId, 'SetAVTransportURI',
-                               data)
+        return Req(self.header).request(controlURL, serviceId,
+                                        'SetAVTransportURI', data)
 
     def play(self, ):
         controlURL = self.url()
         serviceId = 'urn:upnp-org:serviceId:AVTransport'
         data = XmlText().playActionXml()
-        return Req({}).request(controlURL, serviceId, 'Play', data)
+        return Req(self.header).request(controlURL, serviceId, 'Play', data)
 
     def pause(self):
         controlURL = self.url()
         serviceId = 'urn:upnp-org:serviceId:AVTransport'
         data = XmlText().pauseActionXml()
-        return Req({}).request(controlURL, serviceId, 'Pause', data)
+        return Req(self.header).request(controlURL, serviceId, 'Pause', data)
 
     def seek(self):
         controlURL = self.url()
         serviceId = 'urn:upnp-org:serviceId:AVTransport'
         data = XmlText().seekToXml()
-        return Req({}).request(controlURL, serviceId, 'Seek', data)
+        return Req(self.header).request(controlURL, serviceId, 'Seek', data)
 
     def getPosition(self):
         controlURL = self.url()
         serviceId = 'urn:upnp-org:serviceId:AVTransport'
         data = XmlText().getPositionXml()
-        return Req({}).request(controlURL, serviceId, 'GetPositionInfo', data)
+        return Req(self.header).request(controlURL, serviceId,
+                                        'GetPositionInfo', data)
 
 
 class parser:
@@ -197,8 +199,7 @@ class parser:
         self.lines = self.lines[1:]
         if not hasattr(self, method):
             if method == "HTTP/1.1" or method == "HTTP/1.0":
-                self.NOTIFY()
-                return
+                return self.NOTIFY()
             print("method not found", method, path, version)
             return
         return getattr(self, method)()
@@ -223,7 +224,7 @@ class parser:
         try:
             data = Req({}).get(url)
         except Exception as e:
-            print("request "+url+" error ",e)
+            print("request " + url + " error ", e)
             return
         info = xmlParser(url, data).parse()
         return url, info, Device(info)
@@ -267,6 +268,7 @@ class ListenWorker(threading.Thread):
         def ondata(data, address):
             try:
                 self.parse(data, address)
+
             except Exception as e:
                 traceback.print_exc()
 
