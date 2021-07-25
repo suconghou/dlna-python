@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DLNA</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+</head>
+
+<body>
+    <div id="app">
+        <v-app>
+            <v-main>
+                <v-container v-for="(item,index) in info" :key="index">
+                    <v-card>
+                        <v-responsive :aspect-ratio="60/10">
+                            <v-chip class="ma-2" color="pink" label text-color="white">
+                                <v-icon left>
+                                    mdi-label
+                                </v-icon>
+                                地址
+                            </v-chip>
+                            <v-chip class="ma-2" color="cyan" label text-color="white">
+                                {{item.URLBase}}
+                            </v-chip>
+                            <v-divider></v-divider>
+
+                            <template v-if="item.device">
+
+                                <v-chip class="ma-2" color="primary" label text-color="white">
+                                    <v-icon left>
+                                        mdi-devices
+                                    </v-icon>
+                                    设备
+                                </v-chip>
+                                <v-chip class="ma-2" color="deep-purple accent-4" label text-color="white">
+                                    {{item.device.deviceType}}
+                                </v-chip>
+                                <v-chip class="ma-2" color="success" label text-color="white">
+                                    {{item.device.friendlyName}}
+                                </v-chip>
+                            </template>
+
+                            <v-divider></v-divider>
+
+                            <v-chip class="ma-2" color="primary" label text-color="white">
+                                <v-icon left>
+                                    mdi-access-point
+                                </v-icon>
+                                服务
+                            </v-chip>
+
+
+                            <v-container v-if="item.device && item.device.serviceList">
+                                <div v-for="(service,i) in item.device.serviceList" :key="i">
+                                    <v-chip class="ma-2" color="deep-purple accent-4" label text-color="white">
+                                        {{service.serviceType}}
+                                    </v-chip>
+                                    <v-chip class="ma-2" color="success" label text-color="white">
+                                        {{service.serviceId}}
+                                    </v-chip>
+                                </div>
+                                <div v-if="support(item.device.serviceList)">
+                                    <v-btn depressed color="success" @click="()=>{dialog=true;currItem=index}">
+                                        投屏
+                                    </v-btn>
+                                    <v-btn depressed color="primary" @click="play(index)">
+                                        播放
+                                    </v-btn>
+                                    <v-btn depressed color="error" @click="pause(index)">
+                                        暂停
+                                    </v-btn>
+                                    <v-btn depressed color="info">
+                                        快进10秒
+                                    </v-btn>
+                                    <v-btn depressed color="info">
+                                        快退十秒
+                                    </v-btn>
+                                    <v-btn depressed color="info" @click="position(index)">
+                                        更新当前状态
+                                    </v-btn>
+                                    <v-container v-if="status[index]">
+                                        <v-progress-linear rounded striped height="20" :value="status[index].percent">
+                                            <template v-slot:default="{ value }">
+                                                <strong>{{status[index].percent}}%</strong>
+                                            </template>
+                                        </v-progress-linear>
+                                        <br>
+                                        <v-alert type="success" style="word-break: break-all;">
+                                            {{status[index].currentURL}}
+                                            <br>
+                                            {{status[index].absTime}} / {{status[index].duration}}
+
+                                        </v-alert>
+
+                                    </v-container>
+
+                                </div>
+
+
+                            </v-container>
+
+
+
+                    </v-card>
+                </v-container>
+                <v-dialog v-model="dialog" persistent max-width="600px">
+                    <v-card>
+                        <v-card-title>
+                            <span class="text-h5">填写播放地址</span>
+                        </v-card-title>
+                        <v-card-text>
+                            <v-container>
+                                <v-row>
+                                    <v-col cols="12">
+                                        <v-text-field label="http://" v-model="playUrl" required></v-text-field>
+                                    </v-col>
+                                </v-row>
+                            </v-container>
+                        </v-card-text>
+                        <v-card-actions>
+                            <v-spacer></v-spacer>
+                            <v-btn color="blue darken-1" text @click="dialog = false">
+                                关闭
+                            </v-btn>
+                            <v-btn color="primary darken-1" text @click="()=>{dialog = false;setUrl()}">
+                                确认
+                            </v-btn>
+                        </v-card-actions>
+                    </v-card>
+                </v-dialog>
+                <v-snackbar v-model="snackbar" :timeout="2000">
+                    {{ snackbarText }}
+                </v-snackbar>
+            </v-main>
+        </v-app>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
+    <script>
+        new Vue({
+            el: '#app',
+            vuetify: new Vuetify(),
+            data() {
+                return {
+                    dialog: false,
+                    info: {},
+                    playUrl: '',
+                    currItem: {},
+                    snackbar: false,
+                    snackbarText: '',
+                    status: {}
+                }
+            },
+            async mounted() {
+                await this.init()
+            },
+            methods: {
+                async init() {
+                    await this.reload();
+                    setInterval(this.reload, 5e3);
+                },
+                async reload() {
+                    const res = await fetch('/info')
+                    const data = await res.json()
+                    this.info = data;
+                },
+                async setUrl() {
+                    const url = this.currItem;
+                    const playUrl = this.playUrl;
+                    if (!url || !/^https?:\/\/.{5,500}$/.test(playUrl)) {
+                        return this.alert("请输入正确的URL地址");
+                    }
+                    const res = await fetch('/play?url=' + url + '&playUrl=' + playUrl, { method: 'POST' });
+                    const data = await res.json()
+                    if (data.code != 0) {
+                        return this.alert(msg);
+                    }
+                },
+                async play(url) {
+                    const res = await fetch('/play?url=' + url, { method: 'POST' });
+                    const data = await res.json()
+                    if (data.code != 0) {
+                        return this.alert(msg);
+                    }
+                },
+                async pause(url) {
+                    const res = await fetch('/pause?url=' + url, { method: 'POST' });
+                    const data = await res.json()
+                    if (data.code != 0) {
+                        return this.alert(msg);
+                    }
+                },
+                async position(url) {
+                    const res = await fetch('/position?url=' + url, { method: 'POST' });
+                    if (res.status !== 200) {
+                        return;
+                    }
+                    const data = await res.json()
+                    if (data.code != 0) {
+                        return this.alert(msg);
+                    }
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(data.msg, "application/xml");
+                    const status = this.parseStatus(doc)
+                    this.status[url] = status;
+                    this.$forceUpdate();
+                },
+                parseStatus(doc) {
+                    const duration = doc.querySelector('TrackDuration').textContent
+                    const currentURL = doc.querySelector('TrackURI').textContent
+                    const absTime = doc.querySelector('AbsTime').textContent
+                    const durationInt = this.timeToInt(duration);
+                    const absTimeInt = this.timeToInt(absTime);
+                    const percent = Math.round(absTimeInt / durationInt * 100);
+                    return {
+                        duration,
+                        currentURL,
+                        absTime,
+                        durationInt,
+                        absTimeInt,
+                        percent,
+                    }
+                },
+                timeToInt(timeStr) {
+                    const arr = timeStr.split(':')
+                    let sum = 0;
+                    for (let i = 0; i < arr.length; i++) {
+                        sum += Number(arr[i]) * Math.pow(60, arr.length - i - 1)
+                    }
+                    return sum;
+                },
+                support(list) {
+                    return list.some(item => {
+                        return item.serviceId.indexOf('AVTransport') > -1;
+                    });
+                },
+                alert(msg) {
+                    this.snackbarText = msg;
+                    this.snackbar = true;
+                }
+
+            }
+        })
+    </script>
+</body>
+
+</html>
