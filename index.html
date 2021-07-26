@@ -10,12 +10,23 @@
     <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+    <style>
+        [v-cloak] {
+            display: none;
+        }
+    </style>
 </head>
 
 <body>
-    <div id="app">
+    <div id="app" v-cloak>
         <v-app>
             <v-main>
+                <v-container v-if="!Object.keys(info).length">
+                    探测中...
+                    <v-sheet color="grey lighten-4" class="pa-3">
+                        <v-skeleton-loader class="mx-auto" max-width="300" type="card"></v-skeleton-loader>
+                    </v-sheet>
+                </v-container>
                 <v-container v-for="(item,index) in info" :key="index">
                     <v-card>
                         <v-responsive :aspect-ratio="60/10">
@@ -109,6 +120,7 @@
 
                     </v-card>
                 </v-container>
+
                 <v-dialog v-model="dialog" persistent max-width="600px">
                     <v-card>
                         <v-card-title>

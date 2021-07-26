@@ -2,7 +2,7 @@
 # encoding: utf-8
 import socket
 import sys
-from urllib import request, parse
+from urllib import request, parse, error
 import struct
 import traceback
 import threading
@@ -18,21 +18,36 @@ class Req:
         self.headers = headers
 
     def get(self, url):
-        res = request.urlopen(url)
-        return res.read()
+        try:
+            res = request.urlopen(url)
+            return res.read()
+        except error.HTTPError as e:
+            print(e.geturl(), e.read())
+            raise e
 
     def post(self, url, values):
-        data = parse.urlencode(values).encode('utf-8')
-        req = request.Request(url, data, self.headers, method='POST')
-        res = request.urlopen(req, timeout=10)
-        return res.read()
+        try:
+            data = parse.urlencode(values).encode('utf-8')
+            req = request.Request(url, data, self.headers, method='POST')
+            res = request.urlopen(req, timeout=10)
+            return res.read()
+        except error.HTTPError as e:
+            print(e.geturl(), e.read())
+            raise e
 
     def request(self, controlURL, serviceId, actionName, data):
-        data = data.encode('utf-8')
-        self.headers['SOAPACTION'] = serviceId + '#' + actionName
-        req = request.Request(controlURL, data, self.headers, method='POST')
-        res = request.urlopen(req, timeout=10)
-        return res.read()
+        try:
+            data = data.encode('utf-8')
+            self.headers['SOAPACTION'] = serviceId + '#' + actionName
+            req = request.Request(controlURL,
+                                  data,
+                                  self.headers,
+                                  method='POST')
+            res = request.urlopen(req, timeout=10)
+            return res.read()
+        except error.HTTPError as e:
+            print(e.geturl(), e.read())
+            raise e
 
 
 class XmlText():
