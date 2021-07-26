@@ -86,6 +86,9 @@
                                     <v-btn depressed color="error" @click="pause(index)">
                                         暂停
                                     </v-btn>
+                                    <v-btn depressed color="error" @click="stop(index)">
+                                        停止
+                                    </v-btn>
                                     <v-btn depressed color="info">
                                         快进10秒
                                     </v-btn>
@@ -209,6 +212,13 @@
                         return this.alert(msg);
                     }
                 },
+                async stop(url) {
+                    const res = await fetch('/stop?url=' + url, { method: 'POST' });
+                    const data = await res.json()
+                    if (data.code != 0) {
+                        return this.alert(msg);
+                    }
+                },
                 async position(url) {
                     const res = await fetch('/position?url=' + url, { method: 'POST' });
                     if (res.status !== 200) {
@@ -230,7 +240,7 @@
                     const absTime = doc.querySelector('AbsTime').textContent
                     const durationInt = this.timeToInt(duration);
                     const absTimeInt = this.timeToInt(absTime);
-                    const percent = Math.round(absTimeInt / durationInt * 100);
+                    const percent = (absTimeInt && durationInt) ? Math.round(absTimeInt / durationInt * 100) : 0;
                     return {
                         duration,
                         currentURL,

@@ -35,10 +35,13 @@ class Req:
             print(e.geturl(), e.read())
             raise e
 
-    def request(self, controlURL, serviceId, actionName, data):
+    def request(self, controlURL, actionName, data):
         try:
+            serviceId = 'urn:schemas-upnp-org:service:AVTransport:1'
             data = data.encode('utf-8')
-            self.headers['SOAPACTION'] = serviceId + '#' + actionName
+            self.headers[
+                'SOAPAction'] = '"' + serviceId + '#' + actionName + '"'
+            print(data)
             req = request.Request(controlURL,
                                   data,
                                   self.headers,
@@ -52,40 +55,53 @@ class Req:
 
 class XmlText():
     def setPlayURLXml(self, url):
-        return '''<?xml version="1.0" encoding="utf-8" standalone="no"?>
-    <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
-        <s:Body>
-            <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-                <InstanceID>0</InstanceID>
-                <CurrentURI>{}</CurrentURI>
-                <CurrentURIMetaData />
-            </u:SetAVTransportURI>
-        </s:Body>
-    </s:Envelope>
-        '''.format(url)
+        meta = '''&lt;?xml version='1.0' encoding='utf-8' standalone='yes' ?&gt;&lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/"&gt;&lt;item id="id" parentID="0" restricted="0"&gt;&lt;dc:title&gt;This is title&lt;/dc:title&gt;&lt;upnp:artist&gt;unknow&lt;/upnp:artist&gt;&lt;upnp:class&gt;object.item.videoItem&lt;/upnp:class&gt;&lt;dc:date&gt;2018-09-06T18:23:54&lt;/dc:date&gt;&lt;res protocolInfo="http-get:*:*/*:*"&gt;This is url&lt;/res&gt;&lt;/item&gt;&lt;/DIDL-Lite&gt;
+        '''
+        return '''<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+    <s:Body>
+        <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+            <InstanceID>0</InstanceID>
+            <CurrentURI>{}</CurrentURI>
+            <CurrentURIMetaData>{}</CurrentURIMetaData>
+        </u:SetAVTransportURI>
+    </s:Body>
+</s:Envelope>
+        '''.format(url, meta)
 
     def playActionXml(self):
-        return '''<?xml version="1.0" encoding="utf-8" standalone="no"?>
-    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-        <s:Body>
-            <u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-                <InstanceID>0</InstanceID>
-                <Speed>1</Speed>
-            </u:Play>
-        </s:Body>
-    </s:Envelope>
+        return '''<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+    <s:Body>
+        <u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+            <InstanceID>0</InstanceID>
+            <Speed>1</Speed>
+        </u:Play>
+    </s:Body>
+</s:Envelope>
         '''
 
     def pauseActionXml(self):
-        return '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-        <s:Body>
-            <u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-                <InstanceID>0</InstanceID>
-                <Speed>1</Speed>
-            </u:Play>
-        </s:Body>
-    </s:Envelope>
+        return '''<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+	<s:Body>
+		<u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+			<InstanceID>0</InstanceID>
+		</u:Pause>
+	</s:Body>
+</s:Envelope>
     '''
+
+    def stopActionXml(self):
+        return '''<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+    <s:Body>
+        <u:Stop xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+            <InstanceID>0</InstanceID>
+        </u:Stop>
+    </s:Body>
+</s:Envelope>
+        '''
 
     def getPositionXml(self):
         return '''<?xml version="1.0" encoding="utf-8" standalone="no"?>
@@ -100,16 +116,16 @@ class XmlText():
         '''
 
     def seekToXml(self):
-        return '''<?xml version="1.0" encoding="utf-8" standalone="no"?>
-    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-        <s:Body>
-            <u:Seek xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-                <InstanceID>0</InstanceID>
-                <Unit>REL_TIME</Unit>
-                <Target>00:02:21</Target>
-            </u:Seek>
-        </s:Body>
-    </s:Envelope>
+        return '''<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+	<s:Body>
+		<u:Seek xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+			<InstanceID>0</InstanceID>
+			<Unit>REL_TIME</Unit>
+			<Target>00:00:20</Target>
+		</u:Seek>
+	</s:Body>
+</s:Envelope>
         '''
 
 
@@ -166,35 +182,33 @@ class Device:
 
     def setPlayUrl(self, url):
         controlURL = self.url()
-        serviceId = 'urn:upnp-org:serviceId:AVTransport'
         data = XmlText().setPlayURLXml(url)
-        return Req(self.header).request(controlURL, serviceId,
-                                        'SetAVTransportURI', data)
+        return Req(self.header).request(controlURL, 'SetAVTransportURI', data)
 
     def play(self, ):
         controlURL = self.url()
-        serviceId = 'urn:upnp-org:serviceId:AVTransport'
         data = XmlText().playActionXml()
-        return Req(self.header).request(controlURL, serviceId, 'Play', data)
+        return Req(self.header).request(controlURL, 'Play', data)
 
     def pause(self):
         controlURL = self.url()
-        serviceId = 'urn:upnp-org:serviceId:AVTransport'
         data = XmlText().pauseActionXml()
-        return Req(self.header).request(controlURL, serviceId, 'Pause', data)
+        return Req(self.header).request(controlURL, 'Pause', data)
+
+    def stop(self):
+        controlURL = self.url()
+        data = XmlText().stopActionXml()
+        return Req(self.header).request(controlURL, 'Stop', data)
 
     def seek(self):
         controlURL = self.url()
-        serviceId = 'urn:upnp-org:serviceId:AVTransport'
         data = XmlText().seekToXml()
-        return Req(self.header).request(controlURL, serviceId, 'Seek', data)
+        return Req(self.header).request(controlURL, 'Seek', data)
 
     def getPosition(self):
         controlURL = self.url()
-        serviceId = 'urn:upnp-org:serviceId:AVTransport'
         data = XmlText().getPositionXml()
-        return Req(self.header).request(controlURL, serviceId,
-                                        'GetPositionInfo', data)
+        return Req(self.header).request(controlURL, 'GetPositionInfo', data)
 
 
 class parser:
@@ -367,6 +381,8 @@ class Resquest(BaseHTTPRequestHandler):
                 return self.play(query)
             if path.startswith('/pause'):
                 return self.pause(query)
+            if path.startswith('/stop'):
+                return self.stop(query)
             if path.startswith('/position'):
                 return self.position(query)
             if path.startswith('/seek'):
@@ -423,6 +439,17 @@ class Resquest(BaseHTTPRequestHandler):
         if device is None:
             return self.err('no device')
         ret = device.pause()
+        return self.ok(ret.decode())
+
+    def stop(self, query):
+        url = query.get('url')
+        if url is None:
+            return self.err('error params')
+        url = url[0]
+        device = dlna.getDevice(url)
+        if device is None:
+            return self.err('no device')
+        ret = device.stop()
         return self.ok(ret.decode())
 
     def position(self, query):
