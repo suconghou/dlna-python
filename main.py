@@ -2,6 +2,9 @@
 # encoding: utf-8
 import socket
 import sys
+import random
+import subprocess
+import datetime
 from urllib import request, parse, error
 import struct
 import traceback
@@ -11,6 +14,14 @@ import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import xml.etree.ElementTree as ET
+
+
+def getLocalIp():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("119.29.29.29", 80))
+    ip = s.getsockname()[0]
+    s.close()
+    return ip
 
 
 class Req:
@@ -51,6 +62,466 @@ class Req:
         except error.HTTPError as e:
             print(e.geturl(), e.read())
             raise e
+
+
+class XmlReplay():
+    def __init__(self, ip, port, name):
+        self.ip = ip
+        self.port = port
+        self.name = name
+
+    def alive(self):
+        GMT_FORMAT = '%a, %d %b %Y %H:%M:%S GMT'
+        date = datetime.datetime.utcnow().strftime(GMT_FORMAT)
+        st = 'urn:schemas-upnp-org:device:MediaRenderer:1' if random.random(
+        ) > 0.5 else 'urn:schemas-upnp-org:service:AVTransport:1'
+        return '''HTTP/1.1 200 OK
+CACHE-CONTROL: max-age=1800
+EXT:
+DATE: {}
+LOCATION: http://{}:{}/dlna/info.xml
+SERVER: simple python dlna server
+ST: {}
+USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54
+
+'''.format(date, self.ip, self.port, st)
+
+    def desc(self):
+        return '''<root
+    xmlns="urn:schemas-upnp-org:device-1-0">
+    <device>
+        <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
+        <presentationURL>/</presentationURL>
+        <friendlyName>{}</friendlyName>
+        <manufacturer>python dlna server</manufacturer>
+        <manufacturerURL>https://github.com/suconghou/dlna-python</manufacturerURL>
+        <modelDescription>python dlna</modelDescription>
+        <modelName>python dlna</modelName>
+        <modelURL>https://github.com/suconghou/dlna-python</modelURL>
+        <UPC>000000000013</UPC>
+        <UDN>uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54</UDN>
+        <serviceList>
+            <service>
+                <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+                <serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
+                <SCPDURL>/dlna/Render/AVTransport_scpd.xml</SCPDURL>
+                <controlURL>/dlna/_urn:schemas-upnp-org:service:AVTransport_control</controlURL>
+                <eventSubURL>/dlna/_urn:schemas-upnp-org:service:AVTransport_event</eventSubURL>
+            </service>
+        </serviceList>
+    </device>
+    <URLBase>http://{}:{}</URLBase>
+</root>'''.format(self.name, self.ip, self.port)
+
+    def trans(self):
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+			<CurrentTransportState>NO_MEDIA_PRESENT</CurrentTransportState>
+			<CurrentTransportStatus>OK</CurrentTransportStatus>
+			<CurrentSpeed>1</CurrentSpeed>
+		</u:GetTransportInfoResponse>
+	</s:Body>
+</s:Envelope>'''
+
+    def stop(self):
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:StopResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/>
+	</s:Body>
+</s:Envelope>'''
+
+    def setUriResp(self):
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:SetAVTransportURIResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/>
+	</s:Body>
+</s:Envelope>'''
+
+    def playresp(self):
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:PlayResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/>
+	</s:Body>
+</s:Envelope>'''
+
+    def scpd(self):
+        AVTransport_SCPD = \
+  '''<?xml version="1.0" encoding="utf-8"?>
+<scpd xmlns="urn:schemas-upnp-org:service-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <actionList>
+    <action>
+      <name>Play</name>
+      <argumentList>
+        <argument>
+          <name>InstanceID</name>
+          <direction>in</direction>
+          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>Speed</name>
+          <direction>in</direction>
+          <relatedStateVariable>TransportPlaySpeed</relatedStateVariable>
+        </argument>
+      </argumentList>
+    </action>
+    <action>
+      <name>Stop</name>
+      <argumentList>
+        <argument>
+          <name>InstanceID</name>
+          <direction>in</direction>
+          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+        </argument>
+      </argumentList>
+    </action>
+    <action>
+      <name>GetMediaInfo</name>
+      <argumentList>
+        <argument>
+          <name>InstanceID</name>
+          <direction>in</direction>
+          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>NrTracks</name>
+          <direction>out</direction>
+          <relatedStateVariable>NumberOfTracks</relatedStateVariable>
+          <defaultValue>0</defaultValue>
+        </argument>
+        <argument>
+          <name>MediaDuration</name>
+          <direction>out</direction>
+          <relatedStateVariable>CurrentMediaDuration</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>CurrentURI</name>
+          <direction>out</direction>
+          <relatedStateVariable>AVTransportURI</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>CurrentURIMetaData</name>
+          <direction>out</direction>
+          <relatedStateVariable>AVTransportURIMetaData</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>NextURI</name>
+          <direction>out</direction>
+          <relatedStateVariable>NextAVTransportURI</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>NextURIMetaData</name>
+          <direction>out</direction>
+          <relatedStateVariable>NextAVTransportURIMetaData</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>PlayMedium</name>
+          <direction>out</direction>
+          <relatedStateVariable>PlaybackStorageMedium</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>RecordMedium</name>
+          <direction>out</direction>
+          <relatedStateVariable>RecordStorageMedium</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>WriteStatus</name>
+          <direction>out</direction>
+          <relatedStateVariable>RecordMediumWriteStatus</relatedStateVariable>
+        </argument>
+      </argumentList>
+    </action>
+    <action>
+      <name>SetAVTransportURI</name>
+      <argumentList>
+        <argument>
+          <name>InstanceID</name>
+          <direction>in</direction>
+          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>CurrentURI</name>
+          <direction>in</direction>
+          <relatedStateVariable>AVTransportURI</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>CurrentURIMetaData</name>
+          <direction>in</direction>
+          <relatedStateVariable>AVTransportURIMetaData</relatedStateVariable>
+        </argument>
+      </argumentList>
+    </action>
+    <action>
+      <name>GetTransportInfo</name>
+      <argumentList>
+        <argument>
+          <name>InstanceID</name>
+          <direction>in</direction>
+          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>CurrentTransportState</name>
+          <direction>out</direction>
+          <relatedStateVariable>TransportState</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>CurrentTransportStatus</name>
+          <direction>out</direction>
+          <relatedStateVariable>TransportStatus</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>CurrentSpeed</name>
+          <direction>out</direction>
+          <relatedStateVariable>TransportPlaySpeed</relatedStateVariable>
+        </argument>
+      </argumentList>
+    </action>
+    <action>
+      <name>Pause</name>
+      <argumentList>
+        <argument>
+          <name>InstanceID</name>
+          <direction>in</direction>
+          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+        </argument>
+      </argumentList>
+    </action>
+    <action>
+      <name>Seek</name>
+      <argumentList>
+        <argument>
+          <name>InstanceID</name>
+          <direction>in</direction>
+          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>Unit</name>
+          <direction>in</direction>
+          <relatedStateVariable>A_ARG_TYPE_SeekMode</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>Target</name>
+          <direction>in</direction>
+          <relatedStateVariable>A_ARG_TYPE_SeekTarget</relatedStateVariable>
+        </argument>
+      </argumentList>
+    </action>
+    <action>
+      <name>GetPositionInfo</name>
+      <argumentList>
+        <argument>
+          <name>InstanceID</name>
+          <direction>in</direction>
+          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>Track</name>
+          <direction>out</direction>
+          <relatedStateVariable>CurrentTrack</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>TrackDuration</name>
+          <direction>out</direction>
+          <relatedStateVariable>CurrentTrackDuration</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>TrackMetaData</name>
+          <direction>out</direction>
+          <relatedStateVariable>CurrentTrackMetaData</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>TrackURI</name>
+          <direction>out</direction>
+          <relatedStateVariable>CurrentTrackURI</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>RelTime</name>
+          <direction>out</direction>
+          <relatedStateVariable>RelativeTimePosition</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>AbsTime</name>
+          <direction>out</direction>
+          <relatedStateVariable>AbsoluteTimePosition</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>RelCount</name>
+          <direction>out</direction>
+          <relatedStateVariable>RelativeCounterPosition</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>AbsCount</name>
+          <direction>out</direction>
+          <relatedStateVariable>AbsoluteCounterPosition</relatedStateVariable>
+        </argument>
+      </argumentList>
+    </action>
+  </actionList>
+  <serviceStateTable>
+    <stateVariable sendEvents="no">
+      <name>TransportState</name>
+      <dataType>string</dataType>
+      <allowedValueList>
+        <allowedValue>STOPPED</allowedValue>
+        <allowedValue>PAUSED_PLAYBACK</allowedValue>
+        <allowedValue>PLAYING</allowedValue>
+        <allowedValue>TRANSITIONING</allowedValue>
+        <allowedValue>NO_MEDIA_PRESENT</allowedValue>
+      </allowedValueList>
+      <defaultValue>NO_MEDIA_PRESENT</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>TransportStatus</name>
+      <dataType>string</dataType>
+      <allowedValueList>
+        <allowedValue>OK</allowedValue>
+        <allowedValue>ERROR_OCCURRED</allowedValue>
+      </allowedValueList>
+      <defaultValue>OK</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>TransportPlaySpeed</name>
+      <dataType>string</dataType>
+      <defaultValue>1</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>NumberOfTracks</name>
+      <dataType>ui4</dataType>
+      <allowedValueRange>
+        <minimum>0</minimum>
+        <maximum>4294967295</maximum>
+      </allowedValueRange>
+      <defaultValue>0</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>CurrentMediaDuration</name>
+      <dataType>string</dataType>
+      <defaultValue>00:00:00</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>AVTransportURI</name>
+      <dataType>string</dataType>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>AVTransportURIMetaData</name>
+      <dataType>string</dataType>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>PlaybackStorageMedium</name>
+      <dataType>string</dataType>
+      <allowedValueList>
+        <allowedValue>NONE</allowedValue>
+        <allowedValue>NETWORK</allowedValue>
+      </allowedValueList>
+      <defaultValue>NONE</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>CurrentTrack</name>
+      <dataType>ui4</dataType>
+      <allowedValueRange>
+        <minimum>0</minimum>
+        <maximum>4294967295</maximum>
+        <step>1</step>
+      </allowedValueRange>
+      <defaultValue>0</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>CurrentTrackDuration</name>
+      <dataType>string</dataType>
+      <defaultValue>00:00:00</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>CurrentTrackMetaData</name>
+      <dataType>string</dataType>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>CurrentTrackURI</name>
+      <dataType>string</dataType>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>RelativeTimePosition</name>
+      <dataType>string</dataType>
+      <defaultValue>00:00:00</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>AbsoluteTimePosition</name>
+      <dataType>string</dataType>
+      <defaultValue>00:00:00</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>NextAVTransportURI</name>
+      <dataType>string</dataType>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>NextAVTransportURIMetaData</name>
+      <dataType>string</dataType>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>CurrentTransportActions</name>
+      <dataType>string</dataType>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>RecordStorageMedium</name>
+      <dataType>string</dataType>
+      <allowedValueList>
+        <allowedValue>NOT_IMPLEMENTED</allowedValue>
+      </allowedValueList>
+      <defaultValue>NOT_IMPLEMENTED</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>RecordMediumWriteStatus</name>
+      <dataType>string</dataType>
+      <allowedValueList>
+        <allowedValue>NOT_IMPLEMENTED</allowedValue>
+      </allowedValueList>
+      <defaultValue>NOT_IMPLEMENTED</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>RelativeCounterPosition</name>
+      <dataType>i4</dataType>
+      <defaultValue>2147483647</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>AbsoluteCounterPosition</name>
+      <dataType>i4</dataType>
+      <defaultValue>2147483647</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="yes">
+      <name>LastChange</name>
+      <dataType>string</dataType>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>A_ARG_TYPE_InstanceID</name>
+      <dataType>ui4</dataType>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>A_ARG_TYPE_SeekMode</name>
+      <dataType>string</dataType>
+      <allowedValueList>
+        <allowedValue>TRACK_NR</allowedValue>
+        <allowedValue>REL_TIME</allowedValue>
+        <allowedValue>ABS_TIME</allowedValue>
+        <allowedValue>ABS_COUNT</allowedValue>
+        <allowedValue>REL_COUNT</allowedValue>
+        <allowedValue>FRAME</allowedValue>
+      </allowedValueList>
+      <defaultValue>REL_TIME</defaultValue>
+    </stateVariable>
+    <stateVariable sendEvents="no">
+      <name>A_ARG_TYPE_SeekTarget</name>
+      <dataType>string</dataType>
+    </stateVariable>
+  </serviceStateTable>
+</scpd>'''
+        return AVTransport_SCPD
 
 
 class XmlText():
@@ -115,18 +586,28 @@ class XmlText():
     </s:Envelope>
         '''
 
-    def seekToXml(self):
+    def seekToXml(self, sk):
         return '''<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
 	<s:Body>
 		<u:Seek xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
 			<InstanceID>0</InstanceID>
 			<Unit>REL_TIME</Unit>
-			<Target>00:00:20</Target>
+			<Target>{}</Target>
 		</u:Seek>
 	</s:Body>
 </s:Envelope>
-        '''
+        '''.format(sk)
+
+
+class xmlReqParser:
+    def __init__(self, data):
+        self.data = data
+
+    def CurrentURI(self):
+        root = ET.fromstring(self.data)
+        value = root.findtext('CurrentURI')
+        return value
 
 
 class xmlParser:
@@ -200,9 +681,9 @@ class Device:
         data = XmlText().stopActionXml()
         return Req(self.header).request(controlURL, 'Stop', data)
 
-    def seek(self):
+    def seek(self, sk):
         controlURL = self.url()
-        data = XmlText().seekToXml()
+        data = XmlText().seekToXml(sk)
         return Req(self.header).request(controlURL, 'Seek', data)
 
     def getPosition(self):
@@ -212,9 +693,10 @@ class Device:
 
 
 class parser:
-    def __init__(self, data, address):
+    def __init__(self, data, address, udp_socket):
         self.address = address
         self.lines = data.splitlines()
+        self.udp_socket = udp_socket
 
     def get(self):
         arr = self.run_method()
@@ -235,7 +717,10 @@ class parser:
 
     # 收到别人的查询消息
     def MSEARCH(self):
-        pass
+        data = xmlreplayer.alive()
+        if self.udp_socket is None:
+            self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.udp_socket.sendto(data.encode(), self.address)
 
     # 别人发出了存活广播,我们在此过滤投屏设备
     def NOTIFY(self):
@@ -284,19 +769,19 @@ class ListenWorker(threading.Thread):
         while True:
             try:
                 data, address = s.recvfrom(2048)
-                self.parse(data, address)
+                self.parse(data, address, None)
             except Exception as e:
                 traceback.print_exc()
 
-    def parse(self, data, address):
-        url, info, item = parser(data.decode(), address).get()
+    def parse(self, data, address, udp_socket):
+        url, info, item = parser(data.decode(), address, udp_socket).get()
         if url != '' and item != None:
             self.onfound(url, info, item)
 
     def search(self):
-        def ondata(data, address):
+        def ondata(data, address, udp_socket):
             try:
-                self.parse(data, address)
+                self.parse(data, address, udp_socket)
 
             except Exception as e:
                 traceback.print_exc()
@@ -309,6 +794,7 @@ class SearchWorker(threading.Thread):
         threading.Thread.__init__(self)
         self.ondata = ondata
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.udp_socket.setblocking(False)
 
     def run(self):
         while True:
@@ -317,12 +803,17 @@ class SearchWorker(threading.Thread):
             self.search("urn:schemas-upnp-org:service:AVTransport:1")
             time.sleep(1)
             self.search("urn:schemas-upnp-org:device:MediaRenderer:1")
+            time.sleep(1)
+            self.sendNotify()
 
     def sendUdp(self, data):
-        udp_socket = self.udp_socket
-        udp_socket.sendto(data.encode(), ('239.255.255.250', 1900))
-        data, address = udp_socket.recvfrom(2048)
-        self.ondata(data, address)
+        try:
+            udp_socket = self.udp_socket
+            udp_socket.sendto(data.encode(), ('239.255.255.250', 1900))
+            data, address = udp_socket.recvfrom(2048, 0x40)
+            self.ondata(data, address, udp_socket)
+        except BlockingIOError as e:
+            pass
 
     def search(self, st):
         text = '''M-SEARCH * HTTP/1.1
@@ -331,6 +822,26 @@ MAN: "ssdp:discover"
 MX: 5
 ST: {}
 '''.format(st)
+        self.sendUdp(text)
+
+    def sendNotify(self):
+        r = random.random()
+        nt = 'urn:schemas-upnp-org:service:RenderingControl:1'
+        if r > 0.3:
+            if r > 0.6:
+                nt = 'urn:schemas-upnp-org:service:AVTransport:1'
+            else:
+                nt = 'urn:schemas-upnp-org:device:MediaRenderer:1'
+        text = '''NOTIFY * HTTP/1.1
+HOST: 239.255.255.250:1900
+CACHE-CONTROL: max-age=1800
+LOCATION: http://{}:{}/dlna/info.xml
+NT: {}
+NTS: ssdp:alive
+SERVER: Python Dlna Server
+USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54::{}
+
+'''.format(localIp, host[1], nt, nt)
         self.sendUdp(text)
 
 
@@ -353,11 +864,6 @@ class Dlna:
         return self.devices.get(url)
 
 
-host = ('localhost', 8888)
-
-dlna = Dlna()
-
-
 class Resquest(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
@@ -366,6 +872,10 @@ class Resquest(BaseHTTPRequestHandler):
             query = parse.parse_qs(req.query)
             if path.startswith('/info'):
                 return self.info(query)
+            if path.startswith('/dlna/info.xml'):
+                return self.respdesc()
+            if path.startswith('/dlna/Render/AVTransport_scpd.xml'):
+                return self.scpd()
 
             return self.index()
         except Exception as e:
@@ -387,11 +897,67 @@ class Resquest(BaseHTTPRequestHandler):
                 return self.position(query)
             if path.startswith('/seek'):
                 return self.seek(query)
+            if path.startswith(
+                    '/dlna/_urn:schemas-upnp-org:service:AVTransport_control'):
+                body = self.rfile.read()
+                return self.execPlay(body)
 
             return self.notfound()
         except Exception as e:
             traceback.print_exc()
             self.send_error(500, str(e), str(e))
+
+    def do_SUBSCRIBE(self):
+        data = xmlreplayer.desc()
+        print('do_SUBSCRIBE')
+        self.send_response(200)
+        self.send_header('Content-type', 'text/xml')
+        self.end_headers()
+        self.wfile.write(data.encode())
+
+    def respdesc(self):
+        data = xmlreplayer.desc()
+        self.send_response(200)
+        self.send_header('Content-type', 'text/xml')
+        self.end_headers()
+        self.wfile.write(data.encode())
+
+    def scpd(self):
+        data = xmlreplayer.scpd()
+        self.send_response(200)
+        self.send_header('Content-type', 'text/xml')
+        self.end_headers()
+        self.wfile.write(data.encode())
+
+    def execPlay(self, body):
+        data = body.decode()
+        if 'GetTransportInfo' in data:
+            data = xmlreplayer.trans()
+            self.send_response(200)
+            self.send_header('Content-type', 'text/xml')
+            self.end_headers()
+            print(data)
+            self.wfile.write(data.encode())
+            return
+        if 'u:Stop' in data:
+            data = xmlreplayer.stop()
+            self.send_response(200)
+            self.send_header('Content-type', 'text/xml')
+            self.end_headers()
+            print(data)
+            self.wfile.write(data.encode())
+            return
+        print(data)
+        url = xmlReqParser(data).CurrentURI()
+        print('play ', url)
+        ret = subprocess.Popen('ffplay {}'.format(url), shell=True)
+        print(ret)
+        data = xmlreplayer.setUriResp()
+        self.send_response(200)
+        self.send_header('Content-type', 'text/xml')
+        self.end_headers()
+        print(data)
+        self.wfile.write(data.encode())
 
     def index(self):
         self.send_response(200)
@@ -423,8 +989,8 @@ class Resquest(BaseHTTPRequestHandler):
         playUrl = query.get('playUrl')
         if playUrl is None:
             # recover play
-            device.play()
-            self.ok('ok')
+            ret = device.play()
+            self.ok(ret.decode())
             return
         playUrl = playUrl[0]
         ret = device.setPlayUrl(playUrl)
@@ -468,11 +1034,15 @@ class Resquest(BaseHTTPRequestHandler):
         if url is None:
             return self.err('error params')
         url = url[0]
+        sk = query.get('seek')
+        if sk is None:
+            return self.err('error params')
+        sk = sk[0]
         device = dlna.getDevice(url)
         if device is None:
             return self.err('no device')
-        device.seek()
-        return self.ok('ok')
+        ret = device.seek(sk)
+        return self.ok(ret.decode())
 
     def err(self, err):
         self.send_response(200)
@@ -488,6 +1058,12 @@ class Resquest(BaseHTTPRequestHandler):
 
 
 if __name__ == '__main__':
+    localIp = getLocalIp()
+    host = ('0.0.0.0', 8888)
+    xmlreplayer = XmlReplay(localIp, host[1],
+                            "dlna({}:{})".format(localIp, host[1]))
+    dlna = Dlna()
+
     dlna.start()
     server = HTTPServer(host, Resquest)
     print("Starting server, listen at: %s:%s" % host)
