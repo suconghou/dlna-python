@@ -2,6 +2,7 @@
 # encoding: utf-8
 import socket
 import sys
+import re
 import random
 import subprocess
 import datetime
@@ -24,6 +25,13 @@ def getLocalIp():
     ip = s.getsockname()[0]
     s.close()
     return ip
+
+
+def htmlEncode(text):
+    d = {"&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': '&quot;'}
+    for k, v in d.items():
+        text = text.replace(k, v)
+    return text
 
 
 class Req:
@@ -54,7 +62,8 @@ class Req:
             data = data.encode('utf-8')
             self.headers[
                 'SOAPAction'] = '"' + serviceId + '#' + actionName + '"'
-            print(data)
+            self.headers['User-Agent'] = 'UPnP/1.0'
+            self.headers['Connection'] = 'close'
             req = request.Request(controlURL,
                                   data,
                                   self.headers,
@@ -75,8 +84,7 @@ class XmlReplay():
     def alive(self):
         GMT_FORMAT = '%a, %d %b %Y %H:%M:%S GMT'
         date = datetime.datetime.utcnow().strftime(GMT_FORMAT)
-        st = 'urn:schemas-upnp-org:device:MediaRenderer:1' if random.random(
-        ) > 0.5 else 'urn:schemas-upnp-org:service:AVTransport:1'
+        st = 'urn:schemas-upnp-org:device:MediaRenderer:1'
         return '''HTTP/1.1 200 OK
 CACHE-CONTROL: max-age=1800
 EXT:
@@ -545,19 +553,35 @@ USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54
 
 class XmlText():
     def setPlayURLXml(self, url):
-        meta = '''&lt;?xml version='1.0' encoding='utf-8' standalone='yes' ?&gt;&lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/"&gt;&lt;item id="id" parentID="0" restricted="0"&gt;&lt;dc:title&gt;This is title&lt;/dc:title&gt;&lt;upnp:artist&gt;unknow&lt;/upnp:artist&gt;&lt;upnp:class&gt;object.item.videoItem&lt;/upnp:class&gt;&lt;dc:date&gt;2018-09-06T18:23:54&lt;/dc:date&gt;&lt;res protocolInfo="http-get:*:*/*:*"&gt;This is url&lt;/res&gt;&lt;/item&gt;&lt;/DIDL-Lite&gt;
-        '''
-        return '''<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+        # 斗鱼tv的dlna server,只能指定直播间ID,必须是如下格式
+        title = url
+        douyu = re.match(r"^https?://(\d+)\?douyu$",url)
+        if douyu:
+          roomId = douyu.group(1)
+          title = "roomId = {}, line = 0".format(roomId)
+        meta = '''<DIDL-Lite
+    xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"
+    xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:sec="http://www.sec.co.kr/">
+    <item id="false" parentID="1" restricted="0">
+        <dc:title>{}</dc:title>
+        <dc:creator>unkown</dc:creator>
+        <upnp:class>object.item.videoItem</upnp:class>
+        <res resolution="4"></res>
+    </item>
+</DIDL-Lite>
+'''.format(title)
+        return '''<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-    <s:Body>
-        <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-            <InstanceID>0</InstanceID>
-            <CurrentURI>{}</CurrentURI>
-            <CurrentURIMetaData>{}</CurrentURIMetaData>
-        </u:SetAVTransportURI>
-    </s:Body>
-</s:Envelope>
-        '''.format(url, meta)
+   <s:Body>
+      <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+         <InstanceID>0</InstanceID>
+         <CurrentURI>{}</CurrentURI>
+         <CurrentURIMetaData>{}</CurrentURIMetaData>
+      </u:SetAVTransportURI>
+   </s:Body>
+</s:Envelope>'''.format(url, htmlEncode(meta))
 
     def playActionXml(self):
         return '''<?xml version="1.0" encoding="utf-8" standalone="yes"?>
@@ -887,7 +911,7 @@ class Dlna:
         return self.devices.get(url)
 
 
-class ThreadingSimpleServer(ThreadingMixIn,HTTPServer):
+class ThreadingSimpleServer(ThreadingMixIn, HTTPServer):
     pass
 
 
@@ -935,12 +959,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(500, str(e), str(e))
 
     def do_SUBSCRIBE(self):
-        data = xmlreplayer.desc()
+        print(self.headers)
         print('do_SUBSCRIBE')
         self.send_response(200)
-        self.send_header('Content-type', 'text/xml')
+        self.send_header('TIMEOUT', 'Second-3600')
+        self.send_header('SID', 'uuid:f392-a153-571c-e10b')
+        self.send_header('Content-Length', '0')
         self.end_headers()
-        self.wfile.write(data.encode())
 
     def respdesc(self):
         data = xmlreplayer.desc()
@@ -957,6 +982,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data.encode())
 
     def execPlay(self, body):
+        print(self.headers)
+
         data = body.decode()
         if 'GetTransportInfo' in data:
             data = xmlreplayer.trans()

@@ -189,7 +189,7 @@
                 async setUrl() {
                     const url = this.currItem;
                     const playUrl = this.playUrl;
-                    if (!url || !/^https?:\/\/.{5,500}$/.test(playUrl)) {
+                    if (!url || !/^https?:\/\/.{1,500}$/.test(playUrl)) {
                         return this.alert("请输入正确的URL地址");
                     }
                     const res = await fetch('/play?url=' + url + '&playUrl=' + playUrl, { method: 'POST' });
