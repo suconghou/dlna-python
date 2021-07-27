@@ -128,7 +128,7 @@ USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54
 <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
 	<s:Body>
 		<u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-			<CurrentTransportState>NO_MEDIA_PRESENT</CurrentTransportState>
+			<CurrentTransportState>STOPPED</CurrentTransportState>
 			<CurrentTransportStatus>OK</CurrentTransportStatus>
 			<CurrentSpeed>1</CurrentSpeed>
 		</u:GetTransportInfoResponse>
@@ -175,6 +175,9 @@ USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54
 		<u:PlayResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/>
 	</s:Body>
 </s:Envelope>'''
+
+    def seekresp(self):
+      return "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><s:Body><u:SeekResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"></u:SeekResponse></s:Body></s:Envelope>"
 
     def scpd(self):
         AVTransport_SCPD = \
@@ -555,10 +558,10 @@ class XmlText():
     def setPlayURLXml(self, url):
         # 斗鱼tv的dlna server,只能指定直播间ID,必须是如下格式
         title = url
-        douyu = re.match(r"^https?://(\d+)\?douyu$",url)
+        douyu = re.match(r"^https?://(\d+)\?douyu$", url)
         if douyu:
-          roomId = douyu.group(1)
-          title = "roomId = {}, line = 0".format(roomId)
+            roomId = douyu.group(1)
+            title = "roomId = {}, line = 0".format(roomId)
         meta = '''<DIDL-Lite
     xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"
     xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"
@@ -581,7 +584,7 @@ class XmlText():
          <CurrentURIMetaData>{}</CurrentURIMetaData>
       </u:SetAVTransportURI>
    </s:Body>
-</s:Envelope>'''.format(url, htmlEncode(meta))
+</s:Envelope>'''.format(htmlEncode(url), htmlEncode(meta))
 
     def playActionXml(self):
         return '''<?xml version="1.0" encoding="utf-8" standalone="yes"?>
@@ -950,8 +953,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.seek(query)
             if path.startswith(
                     '/dlna/_urn:schemas-upnp-org:service:AVTransport_control'):
-                body = self.rfile.read()
-                return self.execPlay(body)
+                body = self.rfile.read(int(self.headers['content-length']))
+                return self.execPlay(body.decode())
 
             return self.notfound()
         except Exception as e:
@@ -981,10 +984,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data.encode())
 
-    def execPlay(self, body):
-        print(self.headers)
-
-        data = body.decode()
+    def execPlay(self, data):
         if 'GetTransportInfo' in data:
             data = xmlreplayer.trans()
             self.send_response(200)
@@ -999,6 +999,20 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data.encode())
             return
+        if 'u:Play' in data:
+            data = xmlreplayer.playresp()
+            self.send_response(200)
+            self.send_header('Content-type', 'text/xml')
+            self.end_headers()
+            self.wfile.write(data.encode())
+            return
+        if 'u:Seek' in data:
+            data = xmlreplayer.seekresp()
+            self.send_response(200)
+            self.send_header('Content-type', 'text/xml')
+            self.end_headers()
+            self.wfile.write(data.encode())
+            return
         if 'u:GetPositionInfo' in data:
             data = xmlreplayer.postioninfo()
             self.send_response(200)
@@ -1006,16 +1020,16 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data.encode())
             return
+        print(self.headers)
         print(data)
         url = xmlReqParser(data).CurrentURI()
         print('play ', url)
-        ret = subprocess.Popen('ffplay {}'.format(url), shell=True)
+        ret = subprocess.Popen('ffplay -fs "{}"'.format(url), shell=True)
         print(ret)
         data = xmlreplayer.setUriResp()
         self.send_response(200)
         self.send_header('Content-type', 'text/xml')
         self.end_headers()
-        print(data)
         self.wfile.write(data.encode())
 
     def index(self):
