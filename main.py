@@ -8,7 +8,9 @@ import datetime
 from urllib import request, parse, error
 import struct
 import traceback
+import _thread
 import threading
+from socketserver import ThreadingMixIn
 import os
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -130,6 +132,23 @@ USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54
 <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
 	<s:Body>
 		<u:StopResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/>
+	</s:Body>
+</s:Envelope>'''
+
+    def postioninfo(self):
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:GetPositionInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+			<Track>0</Track>
+			<TrackDuration>00:00:00</TrackDuration>
+			<TrackMetaData></TrackMetaData>
+			<TrackURI></TrackURI>
+			<RelTime>00:00:00</RelTime>
+			<AbsTime>00:00:00</AbsTime>
+			<RelCount>2147483647</RelCount>
+			<AbsCount>2147483647</AbsCount>
+		</u:GetPositionInfoResponse>
 	</s:Body>
 </s:Envelope>'''
 
@@ -606,7 +625,8 @@ class xmlReqParser:
 
     def CurrentURI(self):
         root = ET.fromstring(self.data)
-        value = root.findtext('CurrentURI')
+        namespaces = {'s': 'http://schemas.xmlsoap.org/soap/envelope/'}
+        value = root.findtext('s:Body//CurrentURI', None, namespaces)
         return value
 
 
@@ -617,11 +637,12 @@ class xmlParser:
 
     def parse(self):
         r = parse.urlparse(self.url)
-        URLBase = r.scheme + '://' + r.hostname + ':' + str(r.port)
+        URLBase = r.scheme + '://' + str(r.hostname) + ':' + str(r.port)
+        device = {}
         info = {
             'URLBase': URLBase,
+            'device': device,
         }
-        device = {}
         root = ET.fromstring(self.data)
         for child in root:
             tag = child.tag.split('}').pop()
@@ -747,6 +768,7 @@ class parser:
 class ListenWorker(threading.Thread):
     def __init__(self, onfound):
         threading.Thread.__init__(self)
+        self.daemon = True
         self.onfound = onfound
 
     def run(self):
@@ -792,6 +814,7 @@ class ListenWorker(threading.Thread):
 class SearchWorker(threading.Thread):
     def __init__(self, ondata):
         threading.Thread.__init__(self)
+        self.daemon = True
         self.ondata = ondata
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp_socket.setblocking(False)
@@ -864,7 +887,11 @@ class Dlna:
         return self.devices.get(url)
 
 
-class Resquest(BaseHTTPRequestHandler):
+class ThreadingSimpleServer(ThreadingMixIn,HTTPServer):
+    pass
+
+
+class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             req = parse.urlparse(self.path)
@@ -936,7 +963,6 @@ class Resquest(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'text/xml')
             self.end_headers()
-            print(data)
             self.wfile.write(data.encode())
             return
         if 'u:Stop' in data:
@@ -944,7 +970,13 @@ class Resquest(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'text/xml')
             self.end_headers()
-            print(data)
+            self.wfile.write(data.encode())
+            return
+        if 'u:GetPositionInfo' in data:
+            data = xmlreplayer.postioninfo()
+            self.send_response(200)
+            self.send_header('Content-type', 'text/xml')
+            self.end_headers()
             self.wfile.write(data.encode())
             return
         print(data)
@@ -1058,13 +1090,20 @@ class Resquest(BaseHTTPRequestHandler):
 
 
 if __name__ == '__main__':
-    localIp = getLocalIp()
-    host = ('0.0.0.0', 8888)
-    xmlreplayer = XmlReplay(localIp, host[1],
-                            "dlna({}:{})".format(localIp, host[1]))
-    dlna = Dlna()
+    try:
+        localIp = getLocalIp()
+        host = (localIp, 8888)
+        xmlreplayer = XmlReplay(localIp, host[1],
+                                "dlna({}:{})".format(localIp, host[1]))
+        dlna = Dlna()
+        dlna.start()
+        server = ThreadingSimpleServer(host, Handler)
 
-    dlna.start()
-    server = HTTPServer(host, Resquest)
-    print("Starting server, listen at: %s:%s" % host)
-    server.serve_forever()
+        def local(ip, port):
+            ThreadingSimpleServer((ip, port), Handler).serve_forever()
+
+        _thread.start_new_thread(local, ('127.0.0.1', host[1]))
+        print("Starting server, listen at: %s:%s" % host)
+        server.serve_forever()
+    except KeyboardInterrupt:
+        sys.exit()

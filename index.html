@@ -89,11 +89,11 @@
                                     <v-btn depressed color="error" @click="stop(index)">
                                         停止
                                     </v-btn>
-                                    <v-btn depressed color="info">
+                                    <v-btn depressed color="info" @click="goto(index,10)">
                                         快进10秒
                                     </v-btn>
-                                    <v-btn depressed color="info">
-                                        快退十秒
+                                    <v-btn depressed color="info" @click="goto(index,-10)">
+                                        快退10秒
                                     </v-btn>
                                     <v-btn depressed color="info" @click="position(index)">
                                         更新当前状态
@@ -233,6 +233,29 @@
                     const status = this.parseStatus(doc)
                     this.status[url] = status;
                     this.$forceUpdate();
+                },
+                async goto(url, t) {
+                    await this.position(url)
+                    const status = this.status[url];
+                    const time = status.absTimeInt + t;
+                    const h = Math.floor(time / 3600);
+                    const m = Math.floor((time - 3600 * h) / 60);
+                    const s = time - 3600 * h - 60 * m;
+                    const str = `${this.z(h)}:${this.z(m)}:${this.z(s)}`
+                    const res = await fetch('/seek?url=' + url + '&seek=' + str, { method: 'POST' });
+                    const data = await res.json()
+                    setTimeout(() => {
+                        this.position(url);
+                    }, 2000)
+                    if (data.code != 0) {
+                        return this.alert(msg);
+                    }
+                },
+                z(n) {
+                    if (n > 9) {
+                        return n;
+                    }
+                    return `0${n}`;
                 },
                 parseStatus(doc) {
                     const duration = doc.querySelector('TrackDuration').textContent
