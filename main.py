@@ -143,6 +143,14 @@ USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54
 	</s:Body>
 </s:Envelope>'''
 
+    def pause(self):
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:PauseResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/>
+	</s:Body>
+</s:Envelope>'''
+
     def postioninfo(self):
         return '''<?xml version="1.0" encoding="UTF-8"?>
 <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
@@ -177,7 +185,7 @@ USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54
 </s:Envelope>'''
 
     def seekresp(self):
-      return "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><s:Body><u:SeekResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"></u:SeekResponse></s:Body></s:Envelope>"
+        return "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><s:Body><u:SeekResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"></u:SeekResponse></s:Body></s:Envelope>"
 
     def scpd(self):
         AVTransport_SCPD = \
@@ -999,6 +1007,13 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data.encode())
             return
+        if 'u:Pause' in data:
+            data = xmlreplayer.pause()
+            self.send_response(200)
+            self.send_header('Content-type', 'text/xml')
+            self.end_headers()
+            self.wfile.write(data.encode())
+            return
         if 'u:Play' in data:
             data = xmlreplayer.playresp()
             self.send_response(200)
@@ -1020,9 +1035,12 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data.encode())
             return
-        print(self.headers)
-        print(data)
         url = xmlReqParser(data).CurrentURI()
+        if url is None:
+            print(self.headers)
+            print(data)
+            self.notfound()
+            return
         print('play ', url)
         ret = subprocess.Popen('ffplay -fs "{}"'.format(url), shell=True)
         print(ret)
