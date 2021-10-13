@@ -1085,6 +1085,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         playUrl = playUrl[0]
         ret = device.setPlayUrl(playUrl)
+        device.play()
         return self.ok(ret.decode())
 
     def pause(self, query):
