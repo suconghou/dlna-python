@@ -12,11 +12,12 @@ import traceback
 import _thread
 import threading
 from socketserver import ThreadingMixIn
-import os
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import xml.etree.ElementTree as ET
+
+player = "ffplay.exe -fs" if sys.platform == 'win32' else "ffplay -fs"  # or "mpv -fs"
 
 
 def getLocalIp():
@@ -815,8 +816,9 @@ class ListenWorker(threading.Thread):
                           socket.IPPROTO_UDP)
         # 允许端口复用
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 0)
         # 绑定监听多播数据包的端口
-        s.bind(('239.255.255.250', 1900))
+        s.bind(('0.0.0.0', 1900))
         # 声明该socket为多播类型
         s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
         # 加入多播组，组地址由第三个参数制定
@@ -853,6 +855,8 @@ class SearchWorker(threading.Thread):
         self.ondata = ondata
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp_socket.setblocking(False)
+        self.udp_socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP,
+                                   0)
 
     def run(self):
         while True:
@@ -868,7 +872,7 @@ class SearchWorker(threading.Thread):
         try:
             udp_socket = self.udp_socket
             udp_socket.sendto(data.encode(), ('239.255.255.250', 1900))
-            data, address = udp_socket.recvfrom(2048, 0x40)
+            data, address = udp_socket.recvfrom(2048)
             self.ondata(data, address, udp_socket)
         except BlockingIOError as e:
             pass
@@ -1042,7 +1046,7 @@ class Handler(BaseHTTPRequestHandler):
             self.notfound()
             return
         print('play ', url)
-        ret = subprocess.Popen('ffplay -fs "{}"'.format(url), shell=True)
+        ret = subprocess.Popen('{} "{}"'.format(player, url), shell=True)
         print(ret)
         data = xmlreplayer.setUriResp()
         self.send_response(200)
