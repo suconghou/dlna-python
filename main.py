@@ -6,6 +6,7 @@ import re
 from functools import lru_cache
 import subprocess
 import datetime
+from random import randint
 from urllib import request, parse, error
 import struct
 import traceback
@@ -18,6 +19,8 @@ import json
 import xml.etree.ElementTree as ET
 
 player = "ffplay.exe -fs" if sys.platform == 'win32' else "ffplay -fs"  # or "mpv -fs"
+
+uuid = "27d6877e-{}-ea12-abdf-cf8d50e36d54".format(randint(1000, 9999))
 
 
 def getLocalIp():
@@ -92,16 +95,18 @@ class XmlReplay():
         GMT_FORMAT = '%a, %d %b %Y %H:%M:%S GMT'
         date = datetime.datetime.utcnow().strftime(GMT_FORMAT)
         st = 'urn:schemas-upnp-org:device:MediaRenderer:1'
-        return '''HTTP/1.1 200 OK
-CACHE-CONTROL: max-age=1800
-EXT:
-DATE: {}
-LOCATION: http://{}:{}/dlna/info.xml
-SERVER: simple python dlna server
-ST: {}
-USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54
-
-'''.format(date, self.ip, self.port, st)
+        return '\r\n'.join([
+            'HTTP/1.1 200 OK',
+            'CACHE-CONTROL: max-age=60',
+            'EXT:',
+            'DATE: {}'.format(date),
+            'LOCATION: http://{}:{}/dlna/info.xml'.format(self.ip, self.port),
+            'SERVER: simple python dlna server',
+            'ST: {}'.format(st),
+            'USN: uuid:{}'.format(uuid),
+            '',
+            '',
+        ])
 
     def desc(self):
         return '''<root
@@ -116,7 +121,7 @@ USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54
         <modelName>python dlna</modelName>
         <modelURL>https://github.com/suconghou/dlna-python</modelURL>
         <UPC>000000000013</UPC>
-        <UDN>uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54</UDN>
+        <UDN>uuid:{}</UDN>
         <serviceList>
             <service>
                 <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
@@ -128,7 +133,7 @@ USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54
         </serviceList>
     </device>
     <URLBase>http://{}:{}</URLBase>
-</root>'''.format(self.name, self.ip, self.port)
+</root>'''.format(self.name, uuid, self.ip, self.port)
 
     def trans(self):
         return '''<?xml version="1.0" encoding="UTF-8"?>
@@ -902,7 +907,7 @@ class SearchWorker(threading.Thread):
             'NT: {}'.format(nt),
             'NTS: ssdp:alive',
             'SERVER: Python Dlna Server',
-            'USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54::{}'.format(nt),
+            'USN: uuid:{}::{}'.format(uuid, nt),
             '',
             '',
         ])
