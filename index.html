@@ -159,6 +159,7 @@
     <script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.js"></script>
     <script>
+        var baseUrl = sessionStorage.getItem("baseUrl") || '';
         new Vue({
             el: '#app',
             vuetify: new Vuetify(),
@@ -182,45 +183,49 @@
                     setInterval(this.reload, 5e3);
                 },
                 async reload() {
-                    const res = await fetch('/info')
-                    const data = await res.json()
-                    this.info = data;
+                    try {
+                        const res = await fetch(baseUrl + '/info')
+                        const data = await res.json()
+                        this.info = data;
+                    } catch (e) {
+                        console.warn(e)
+                    }
                 },
                 async setUrl() {
                     const url = this.currItem;
                     const playUrl = this.playUrl;
-                    if (!url || !/^https?:\/\/.{1,500}$/.test(playUrl)) {
+                    if (!url || !/^https?:\/\/.+$/.test(playUrl)) {
                         return this.alert("请输入正确的URL地址");
                     }
-                    const res = await fetch('/play?url=' + url + '&playUrl=' + playUrl, { method: 'POST' });
+                    const res = await fetch(baseUrl + '/play?url=' + url + '&playUrl=' + playUrl, { method: 'POST' });
                     const data = await res.json()
                     if (data.code != 0) {
                         return this.alert(msg);
                     }
                 },
                 async play(url) {
-                    const res = await fetch('/play?url=' + url, { method: 'POST' });
+                    const res = await fetch(baseUrl + '/play?url=' + url, { method: 'POST' });
                     const data = await res.json()
                     if (data.code != 0) {
                         return this.alert(msg);
                     }
                 },
                 async pause(url) {
-                    const res = await fetch('/pause?url=' + url, { method: 'POST' });
+                    const res = await fetch(baseUrl + '/pause?url=' + url, { method: 'POST' });
                     const data = await res.json()
                     if (data.code != 0) {
                         return this.alert(msg);
                     }
                 },
                 async stop(url) {
-                    const res = await fetch('/stop?url=' + url, { method: 'POST' });
+                    const res = await fetch(baseUrl + '/stop?url=' + url, { method: 'POST' });
                     const data = await res.json()
                     if (data.code != 0) {
                         return this.alert(msg);
                     }
                 },
                 async position(url) {
-                    const res = await fetch('/position?url=' + url, { method: 'POST' });
+                    const res = await fetch(baseUrl + '/position?url=' + url, { method: 'POST' });
                     if (res.status !== 200) {
                         return;
                     }
@@ -242,7 +247,7 @@
                     const m = Math.floor((time - 3600 * h) / 60);
                     const s = time - 3600 * h - 60 * m;
                     const str = `${this.z(h)}:${this.z(m)}:${this.z(s)}`
-                    const res = await fetch('/seek?url=' + url + '&seek=' + str, { method: 'POST' });
+                    const res = await fetch(baseUrl + '/seek?url=' + url + '&seek=' + str, { method: 'POST' });
                     const data = await res.json()
                     setTimeout(() => {
                         this.position(url);

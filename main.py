@@ -3,7 +3,7 @@
 import socket
 import sys
 import re
-import random
+from functools import lru_cache
 import subprocess
 import datetime
 from urllib import request, parse, error
@@ -35,17 +35,23 @@ def htmlEncode(text):
     return text
 
 
+@lru_cache(maxsize=8)
+def ReqGet(url):
+    try:
+        try:
+            res = request.urlopen(url, timeout=5)
+            return res.read()
+        except error.HTTPError as e:
+            print("request " + url + " error ", e)
+            print(e.geturl(), e.read())
+            return None
+    except Exception as e:
+        return None
+
+
 class Req:
     def __init__(self, headers):
         self.headers = headers
-
-    def get(self, url):
-        try:
-            res = request.urlopen(url)
-            return res.read()
-        except error.HTTPError as e:
-            print(e.geturl(), e.read())
-            raise e
 
     def post(self, url, values):
         try:
@@ -777,6 +783,7 @@ class parser:
         data = xmlreplayer.alive()
         if self.udp_socket is None:
             self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.udp_socket.setblocking(False)
         self.udp_socket.sendto(data.encode(), self.address)
 
     # 别人发出了存活广播,我们在此过滤投屏设备
@@ -791,11 +798,8 @@ class parser:
                 return self.getInfo(value)
 
     def getInfo(self, url):
-        data = {}
-        try:
-            data = Req({}).get(url)
-        except Exception as e:
-            print("request " + url + " error ", e)
+        data = ReqGet(url)
+        if data is None:
             return
         info = xmlParser(url, data).parse()
         return url, info, Device(info)
@@ -861,49 +865,47 @@ class SearchWorker(threading.Thread):
     def run(self):
         while True:
             self.search("ssdp:all")
-            time.sleep(1)
+            self.sendNotify("urn:schemas-upnp-org:service:RenderingControl:1")
             self.search("urn:schemas-upnp-org:service:AVTransport:1")
-            time.sleep(1)
+            self.sendNotify("urn:schemas-upnp-org:service:AVTransport:1")
             self.search("urn:schemas-upnp-org:device:MediaRenderer:1")
-            time.sleep(1)
-            self.sendNotify()
+            self.sendNotify("urn:schemas-upnp-org:device:MediaRenderer:1")
 
     def sendUdp(self, data):
         try:
             udp_socket = self.udp_socket
             udp_socket.sendto(data.encode(), ('239.255.255.250', 1900))
+            time.sleep(1)
             data, address = udp_socket.recvfrom(2048)
             self.ondata(data, address, udp_socket)
         except BlockingIOError as e:
             pass
 
     def search(self, st):
-        text = '''M-SEARCH * HTTP/1.1
-HOST: 239.255.255.250:1900
-MAN: "ssdp:discover"
-MX: 5
-ST: {}
-'''.format(st)
+        text = '\r\n'.join([
+            'M-SEARCH * HTTP/1.1',
+            'HOST: 239.255.255.250:1900',
+            'MAN: "ssdp:discover"',
+            'MX: 5',
+            'ST: {}'.format(st),
+            '',
+            '',
+        ])
         self.sendUdp(text)
 
-    def sendNotify(self):
-        r = random.random()
-        nt = 'urn:schemas-upnp-org:service:RenderingControl:1'
-        if r > 0.3:
-            if r > 0.6:
-                nt = 'urn:schemas-upnp-org:service:AVTransport:1'
-            else:
-                nt = 'urn:schemas-upnp-org:device:MediaRenderer:1'
-        text = '''NOTIFY * HTTP/1.1
-HOST: 239.255.255.250:1900
-CACHE-CONTROL: max-age=1800
-LOCATION: http://{}:{}/dlna/info.xml
-NT: {}
-NTS: ssdp:alive
-SERVER: Python Dlna Server
-USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54::{}
-
-'''.format(localIp, host[1], nt, nt)
+    def sendNotify(self, nt):
+        text = '\r\n'.join([
+            'NOTIFY * HTTP/1.1',
+            'HOST: 239.255.255.250:1900',
+            'CACHE-CONTROL: max-age=30',
+            'LOCATION: http://{}:{}/dlna/info.xml'.format(localIp, host[1]),
+            'NT: {}'.format(nt),
+            'NTS: ssdp:alive',
+            'SERVER: Python Dlna Server',
+            'USN: uuid:27d6877e-3842-ea12-abdf-cf8d50e36d54::{}'.format(nt),
+            '',
+            '',
+        ])
         self.sendUdp(text)
 
 
@@ -986,6 +988,7 @@ class Handler(BaseHTTPRequestHandler):
         data = xmlreplayer.desc()
         self.send_response(200)
         self.send_header('Content-type', 'text/xml')
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(data.encode())
 
@@ -993,6 +996,7 @@ class Handler(BaseHTTPRequestHandler):
         data = xmlreplayer.scpd()
         self.send_response(200)
         self.send_header('Content-type', 'text/xml')
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(data.encode())
 
@@ -1001,6 +1005,7 @@ class Handler(BaseHTTPRequestHandler):
             data = xmlreplayer.trans()
             self.send_response(200)
             self.send_header('Content-type', 'text/xml')
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(data.encode())
             return
@@ -1008,6 +1013,7 @@ class Handler(BaseHTTPRequestHandler):
             data = xmlreplayer.stop()
             self.send_response(200)
             self.send_header('Content-type', 'text/xml')
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(data.encode())
             return
@@ -1015,6 +1021,7 @@ class Handler(BaseHTTPRequestHandler):
             data = xmlreplayer.pause()
             self.send_response(200)
             self.send_header('Content-type', 'text/xml')
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(data.encode())
             return
@@ -1022,6 +1029,8 @@ class Handler(BaseHTTPRequestHandler):
             data = xmlreplayer.playresp()
             self.send_response(200)
             self.send_header('Content-type', 'text/xml')
+            self.send_header('Access-Control-Allow-Origin', '*')
+
             self.end_headers()
             self.wfile.write(data.encode())
             return
@@ -1029,6 +1038,8 @@ class Handler(BaseHTTPRequestHandler):
             data = xmlreplayer.seekresp()
             self.send_response(200)
             self.send_header('Content-type', 'text/xml')
+            self.send_header('Access-Control-Allow-Origin', '*')
+
             self.end_headers()
             self.wfile.write(data.encode())
             return
@@ -1036,6 +1047,7 @@ class Handler(BaseHTTPRequestHandler):
             data = xmlreplayer.postioninfo()
             self.send_response(200)
             self.send_header('Content-type', 'text/xml')
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(data.encode())
             return
@@ -1045,18 +1057,20 @@ class Handler(BaseHTTPRequestHandler):
             print(data)
             self.notfound()
             return
-        print('play ', url)
+        print('local play ', url)
         ret = subprocess.Popen('{} "{}"'.format(player, url), shell=True)
         print(ret)
         data = xmlreplayer.setUriResp()
         self.send_response(200)
         self.send_header('Content-type', 'text/xml')
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(data.encode())
 
     def index(self):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         with open("index.html", "rb") as f:
             self.wfile.write(f.read())
@@ -1064,12 +1078,14 @@ class Handler(BaseHTTPRequestHandler):
     def notfound(self):
         self.send_response(404)
         self.send_header('Content-type', 'text/plain')
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(b'404 not found')
 
     def info(self, query):
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(json.dumps(dlna.getInfos()).encode())
 
@@ -1082,12 +1098,13 @@ class Handler(BaseHTTPRequestHandler):
         if device is None:
             return self.err('no device')
         playUrl = query.get('playUrl')
-        if playUrl is None:
+        if playUrl is None or playUrl[0] is None:
             # recover play
             ret = device.play()
             self.ok(ret.decode())
             return
         playUrl = playUrl[0]
+        print('remote play ', playUrl)
         ret = device.setPlayUrl(playUrl)
         device.play()
         return self.ok(ret.decode())
@@ -1143,12 +1160,14 @@ class Handler(BaseHTTPRequestHandler):
     def err(self, err):
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(json.dumps({'code': -1, 'msg': err}).encode())
 
     def ok(self, msg):
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(json.dumps({'code': 0, 'msg': msg}).encode())
 
