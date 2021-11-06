@@ -937,6 +937,11 @@ class ThreadingSimpleServer(ThreadingMixIn, HTTPServer):
     pass
 
 
+class PlayStatus:
+    playing = None
+    url = ""
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
@@ -1015,6 +1020,9 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data.encode())
             return
         if 'u:Stop' in data:
+            if PlayStatus.playing:
+                PlayStatus.playing.kill()
+                print('local stop ', PlayStatus.url)
             data = xmlreplayer.stop()
             self.send_response(200)
             self.send_header('Content-type', 'text/xml')
@@ -1023,6 +1031,9 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data.encode())
             return
         if 'u:Pause' in data:
+            if PlayStatus.playing:
+                PlayStatus.playing.kill()
+                print('local stop ', PlayStatus.url)
             data = xmlreplayer.pause()
             self.send_response(200)
             self.send_header('Content-type', 'text/xml')
@@ -1065,6 +1076,10 @@ class Handler(BaseHTTPRequestHandler):
         print('local play ', url)
         ret = subprocess.Popen('{} "{}"'.format(player, url), shell=True)
         print(ret)
+        if PlayStatus.playing:
+            PlayStatus.playing.kill()
+        PlayStatus.playing = ret  # type: ignore
+        PlayStatus.url = url
         data = xmlreplayer.setUriResp()
         self.send_response(200)
         self.send_header('Content-type', 'text/xml')
