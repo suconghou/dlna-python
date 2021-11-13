@@ -137,15 +137,17 @@ class XmlReplay():
 
     def trans(self):
         return '''<?xml version="1.0" encoding="UTF-8"?>
-<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
-	<s:Body>
-		<u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-			<CurrentTransportState>STOPPED</CurrentTransportState>
-			<CurrentTransportStatus>OK</CurrentTransportStatus>
-			<CurrentSpeed>1</CurrentSpeed>
-		</u:GetTransportInfoResponse>
-	</s:Body>
-</s:Envelope>'''
+        <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+          <s:Body>
+            <u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+              <CurrentTransportState>{}</CurrentTransportState>
+              <CurrentTransportStatus>OK</CurrentTransportStatus>
+              <CurrentSpeed>1</CurrentSpeed>
+            </u:GetTransportInfoResponse>
+          </s:Body>
+        </s:Envelope>'''.format(
+            'PLAYING' if PlayStatus.stoped ==
+            False else 'STOPED' if PlayStatus.url else 'NO_MEDIA_PRESENT')
 
     def stop(self):
         return '''<?xml version="1.0" encoding="UTF-8"?>
@@ -163,22 +165,43 @@ class XmlReplay():
 	</s:Body>
 </s:Envelope>'''
 
+    def mediainfo(self):
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope
+ xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body><u:GetMediaInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+ <NrTracks>0</NrTracks>
+ <MediaDuration>02:00:00</MediaDuration>
+ <CurrentURI>{}</CurrentURI>
+ <CurrentURIMetaData>{}</CurrentURIMetaData>
+ <NextURI></NextURI>
+ <NextURIMetaData></NextURIMetaData>
+ <PlayMedium>NETWORK</PlayMedium>
+ <RecordMedium>NOT_IMPLEMENTED</RecordMedium>
+ <WriteStatus>NOT_IMPLEMENTED</WriteStatus>
+</u:GetMediaInfoResponse>
+</s:Body>
+</s:Envelope>'''.format(htmlEncode(PlayStatus.url),
+                        htmlEncode(PlayStatus.meta))
+
     def postioninfo(self):
+        x = randint(1,9)
         return '''<?xml version="1.0" encoding="UTF-8"?>
 <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
 	<s:Body>
 		<u:GetPositionInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
 			<Track>0</Track>
-			<TrackDuration>00:00:00</TrackDuration>
+			<TrackDuration>02:00:00</TrackDuration>
 			<TrackMetaData></TrackMetaData>
-			<TrackURI></TrackURI>
-			<RelTime>00:00:00</RelTime>
-			<AbsTime>00:00:00</AbsTime>
+			<TrackURI>{}</TrackURI>
+			<RelTime>00:00:0{}</RelTime>
+			<AbsTime>00:00:0{}</AbsTime>
 			<RelCount>2147483647</RelCount>
 			<AbsCount>2147483647</AbsCount>
 		</u:GetPositionInfoResponse>
 	</s:Body>
-</s:Envelope>'''
+</s:Envelope>'''.format(htmlEncode(PlayStatus.url),x,x)
 
     def setUriResp(self):
         return '''<?xml version="1.0" encoding="UTF-8"?>
@@ -676,6 +699,12 @@ class xmlReqParser:
         value = root.findtext('s:Body//CurrentURI', None, namespaces)
         return value
 
+    def CurrentURIMetaData(self):
+        root = ET.fromstring(self.data)
+        namespaces = {'s': 'http://schemas.xmlsoap.org/soap/envelope/'}
+        value = root.findtext('s:Body//CurrentURIMetaData', None, namespaces)
+        return value
+
 
 class xmlParser:
     def __init__(self, url, data):
@@ -875,6 +904,7 @@ class SearchWorker(threading.Thread):
             self.sendNotify("urn:schemas-upnp-org:service:AVTransport:1")
             self.search("urn:schemas-upnp-org:device:MediaRenderer:1")
             self.sendNotify("urn:schemas-upnp-org:device:MediaRenderer:1")
+            self.sendNotify("upnp:rootdevice")
 
     def sendUdp(self, data):
         try:
@@ -939,7 +969,9 @@ class ThreadingSimpleServer(ThreadingMixIn, HTTPServer):
 
 class PlayStatus:
     playing = None
+    stoped = True
     url = ""
+    meta = ""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1022,6 +1054,7 @@ class Handler(BaseHTTPRequestHandler):
         if 'u:Stop' in data:
             if PlayStatus.playing:
                 PlayStatus.playing.kill()
+                PlayStatus.stoped = True
                 print('local stop ', PlayStatus.url)
             data = xmlreplayer.stop()
             self.send_response(200)
@@ -1031,9 +1064,6 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data.encode())
             return
         if 'u:Pause' in data:
-            if PlayStatus.playing:
-                PlayStatus.playing.kill()
-                print('local stop ', PlayStatus.url)
             data = xmlreplayer.pause()
             self.send_response(200)
             self.send_header('Content-type', 'text/xml')
@@ -1055,7 +1085,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'text/xml')
             self.send_header('Access-Control-Allow-Origin', '*')
-
+            self.end_headers()
+            self.wfile.write(data.encode())
+            return
+        if 'u:GetMediaInfo' in data:
+            data = xmlreplayer.mediainfo()
+            self.send_response(200)
+            self.send_header('Content-type', 'text/xml')
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(data.encode())
             return
@@ -1067,7 +1104,9 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data.encode())
             return
-        url = xmlReqParser(data).CurrentURI()
+        reqParser = xmlReqParser(data)
+        url = reqParser.CurrentURI()
+        meta = reqParser.CurrentURIMetaData()
         if url is None:
             print(self.headers)
             print(data)
@@ -1079,7 +1118,9 @@ class Handler(BaseHTTPRequestHandler):
         if PlayStatus.playing:
             PlayStatus.playing.kill()
         PlayStatus.playing = ret  # type: ignore
+        PlayStatus.stoped = False
         PlayStatus.url = url
+        PlayStatus.meta = meta or ""
         data = xmlreplayer.setUriResp()
         self.send_response(200)
         self.send_header('Content-type', 'text/xml')
