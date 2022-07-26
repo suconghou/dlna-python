@@ -22,6 +22,8 @@ player = "ffplay.exe -fs" if sys.platform == 'win32' else "ffplay -fs"  # or "mp
 
 uuid = "27d6877e-{}-ea12-abdf-cf8d50e36d54".format(randint(1000, 9999))
 
+rendering_control = {'SetMute', 'GetMute', 'SetVolume', 'GetVolume'}
+
 
 def getLocalIp():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -68,16 +70,15 @@ class Req:
 
     def request(self, controlURL, actionName, data):
         try:
-            serviceId = 'urn:schemas-upnp-org:service:AVTransport:1'
+            soapAction = (
+                'RenderingControl' if actionName in rendering_control else 'AVTransport'
+            )
+            serviceId = 'urn:schemas-upnp-org:service:{}:1'.format(soapAction)
             data = data.encode('utf-8')
-            self.headers[
-                'SOAPAction'] = '"' + serviceId + '#' + actionName + '"'
+            self.headers['SOAPAction'] = '"' + serviceId + '#' + actionName + '"'
             self.headers['User-Agent'] = 'UPnP/1.0'
             self.headers['Connection'] = 'close'
-            req = request.Request(controlURL,
-                                  data,
-                                  self.headers,
-                                  method='POST')
+            req = request.Request(controlURL, data, self.headers, method='POST')
             res = request.urlopen(req, timeout=10)
             return res.read()
         except error.HTTPError as e:
@@ -85,7 +86,7 @@ class Req:
             raise e
 
 
-class XmlReplay():
+class XmlReplay:
     def __init__(self, ip, port, name):
         self.ip = ip
         self.port = port
@@ -95,18 +96,20 @@ class XmlReplay():
         GMT_FORMAT = '%a, %d %b %Y %H:%M:%S GMT'
         date = datetime.datetime.utcnow().strftime(GMT_FORMAT)
         st = 'urn:schemas-upnp-org:device:MediaRenderer:1'
-        return '\r\n'.join([
-            'HTTP/1.1 200 OK',
-            'CACHE-CONTROL: max-age=60',
-            'EXT:',
-            'DATE: {}'.format(date),
-            'LOCATION: http://{}:{}/dlna/info.xml'.format(self.ip, self.port),
-            'SERVER: simple python dlna server',
-            'ST: {}'.format(st),
-            'USN: uuid:{}'.format(uuid),
-            '',
-            '',
-        ])
+        return '\r\n'.join(
+            [
+                'HTTP/1.1 200 OK',
+                'CACHE-CONTROL: max-age=60',
+                'EXT:',
+                'DATE: {}'.format(date),
+                'LOCATION: http://{}:{}/dlna/info.xml'.format(self.ip, self.port),
+                'SERVER: simple python dlna server',
+                'ST: {}'.format(st),
+                'USN: uuid:{}'.format(uuid),
+                '',
+                '',
+            ]
+        )
 
     def desc(self):
         return '''<root
@@ -133,7 +136,9 @@ class XmlReplay():
         </serviceList>
     </device>
     <URLBase>http://{}:{}</URLBase>
-</root>'''.format(self.name, uuid, self.ip, self.port)
+</root>'''.format(
+            self.name, uuid, self.ip, self.port
+        )
 
     def trans(self):
         return '''<?xml version="1.0" encoding="UTF-8"?>
@@ -146,8 +151,12 @@ class XmlReplay():
             </u:GetTransportInfoResponse>
           </s:Body>
         </s:Envelope>'''.format(
-            'PLAYING' if PlayStatus.stoped ==
-            False else 'STOPED' if PlayStatus.url else 'NO_MEDIA_PRESENT')
+            'PLAYING'
+            if PlayStatus.stoped == False
+            else 'STOPED'
+            if PlayStatus.url
+            else 'NO_MEDIA_PRESENT'
+        )
 
     def stop(self):
         return '''<?xml version="1.0" encoding="UTF-8"?>
@@ -182,11 +191,12 @@ s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
  <WriteStatus>NOT_IMPLEMENTED</WriteStatus>
 </u:GetMediaInfoResponse>
 </s:Body>
-</s:Envelope>'''.format(htmlEncode(PlayStatus.url),
-                        htmlEncode(PlayStatus.meta))
+</s:Envelope>'''.format(
+            htmlEncode(PlayStatus.url), htmlEncode(PlayStatus.meta)
+        )
 
     def postioninfo(self):
-        x = randint(1,9)
+        x = randint(1, 9)
         return '''<?xml version="1.0" encoding="UTF-8"?>
 <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
 	<s:Body>
@@ -201,7 +211,9 @@ s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
 			<AbsCount>2147483647</AbsCount>
 		</u:GetPositionInfoResponse>
 	</s:Body>
-</s:Envelope>'''.format(htmlEncode(PlayStatus.url),x,x)
+</s:Envelope>'''.format(
+            htmlEncode(PlayStatus.url), x, x
+        )
 
     def setUriResp(self):
         return '''<?xml version="1.0" encoding="UTF-8"?>
@@ -223,8 +235,7 @@ s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
         return "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><s:Body><u:SeekResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"></u:SeekResponse></s:Body></s:Envelope>"
 
     def scpd(self):
-        AVTransport_SCPD = \
-  '''<?xml version="1.0" encoding="utf-8"?>
+        AVTransport_SCPD = '''<?xml version="1.0" encoding="utf-8"?>
 <scpd xmlns="urn:schemas-upnp-org:service-1-0">
   <specVersion>
     <major>1</major>
@@ -597,7 +608,7 @@ s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
         return AVTransport_SCPD
 
 
-class XmlText():
+class XmlText:
     def setPlayURLXml(self, url):
         # 斗鱼tv的dlna server,只能指定直播间ID,必须是如下格式
         title = url
@@ -617,7 +628,9 @@ class XmlText():
         <res resolution="4"></res>
     </item>
 </DIDL-Lite>
-'''.format(title)
+'''.format(
+            title
+        )
         return '''<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
    <s:Body>
@@ -627,7 +640,9 @@ class XmlText():
          <CurrentURIMetaData>{}</CurrentURIMetaData>
       </u:SetAVTransportURI>
    </s:Body>
-</s:Envelope>'''.format(htmlEncode(url), htmlEncode(meta))
+</s:Envelope>'''.format(
+            htmlEncode(url), htmlEncode(meta)
+        )
 
     def playActionXml(self):
         return '''<?xml version="1.0" encoding="utf-8" standalone="yes"?>
@@ -686,7 +701,123 @@ class XmlText():
 		</u:Seek>
 	</s:Body>
 </s:Envelope>
-        '''.format(sk)
+        '''.format(
+            sk
+        )
+
+    def getDeviceCapabilitiesXml(self):
+        return '''<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:GetDeviceCapabilities xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+			<InstanceID>0</InstanceID>
+		</u:GetDeviceCapabilities>
+	</s:Body>
+</s:Envelope>'''
+
+    def getMediaInfoXml(self):
+        return '''<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:GetMediaInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+			<InstanceID>0</InstanceID>
+		</u:GetMediaInfo>
+	</s:Body>
+</s:Envelope>'''
+
+    def getTransportInfoXml(self):
+        return '''<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:GetTransportInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+			<InstanceID>0</InstanceID>
+		</u:GetTransportInfo>
+	</s:Body>
+</s:Envelope>'''
+
+    def nextXml(self):
+        return '''<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:Next xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+			<InstanceID>0</InstanceID>
+		</u:Next>
+	</s:Body>
+</s:Envelope>'''
+
+    def previousXml(self):
+        return '''<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:Previous xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+			<InstanceID>0</InstanceID>
+		</u:Previous>
+	</s:Body>
+</s:Envelope>'''
+
+    def setPlayModeXml(self, playMode):
+        return '''<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:SetPlayMode xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+			<InstanceID>0</InstanceID>
+			<NewPlayMode>{}</NewPlayMode>
+		</u:SetPlayMode>
+	</s:Body>
+</s:Envelope>'''.format(
+            playMode
+        )
+
+    def getMuteXml(self):
+        return '''<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:GetMute xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+			<InstanceID>0</InstanceID>
+			<Channel>Master</Channel>
+		</u:GetMute>
+	</s:Body>
+</s:Envelope>'''
+
+    def muteXml(self, mute):
+        value = '1' if mute else '0'
+        return '''<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:SetMute xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+			<InstanceID>0</InstanceID>
+			<Channel>Master</Channel>
+			<DesiredMute>{}</DesiredMute>
+		</u:SetMute>
+	</s:Body>
+</s:Envelope>'''.format(
+            value
+        )
+
+    def getVolumeXml(self):
+        return '''<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:GetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+			<InstanceID>0</InstanceID>
+			<Channel>Master</Channel>
+		</u:GetVolume>
+	</s:Body>
+</s:Envelope>'''
+
+    def volumeXml(self, volume):
+        return '''<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+			<InstanceID>0</InstanceID>
+			<Channel>Master</Channel>
+			<DesiredVolume>{}</DesiredVolume>
+		</u:SetVolume>
+	</s:Body>
+</s:Envelope>'''.format(
+            volume
+        )
 
 
 class xmlReqParser:
@@ -751,42 +882,89 @@ class Device:
         self.info = info
         self.header = {"Content-Type": "text/xml"}
 
-    def url(self):
+    def url(self, actionName):
         part = ''
+        soapAction = (
+            'RenderingControl' if actionName in rendering_control else 'AVTransport'
+        )
         for item in self.info['device']['serviceList']:
-            if 'org:service:AVTransport' in item['serviceType']:
+            if 'org:service:{}'.format(soapAction) in item['serviceType']:
                 part = item['controlURL']
         return parse.urljoin(self.info['URLBase'], part)
 
-    def setPlayUrl(self, url):
-        controlURL = self.url()
-        data = XmlText().setPlayURLXml(url)
-        return Req(self.header).request(controlURL, 'SetAVTransportURI', data)
+    def req(self, action, data):
+        controlURL = self.url(action)
+        return Req(self.header).request(controlURL, action, data)
 
-    def play(self, ):
-        controlURL = self.url()
+    def setPlayUrl(self, url):
+        data = XmlText().setPlayURLXml(url)
+        return self.req('SetAVTransportURI', data)
+
+    def play(
+        self,
+    ):
         data = XmlText().playActionXml()
-        return Req(self.header).request(controlURL, 'Play', data)
+        return self.req('Play', data)
 
     def pause(self):
-        controlURL = self.url()
         data = XmlText().pauseActionXml()
-        return Req(self.header).request(controlURL, 'Pause', data)
+        return self.req('Pause', data)
 
     def stop(self):
-        controlURL = self.url()
         data = XmlText().stopActionXml()
-        return Req(self.header).request(controlURL, 'Stop', data)
+        return self.req('Stop', data)
 
     def seek(self, sk):
-        controlURL = self.url()
         data = XmlText().seekToXml(sk)
-        return Req(self.header).request(controlURL, 'Seek', data)
+        return self.req('Seek', data)
 
     def getPosition(self):
-        controlURL = self.url()
         data = XmlText().getPositionXml()
-        return Req(self.header).request(controlURL, 'GetPositionInfo', data)
+        return self.req('GetPositionInfo', data)
+
+    def getDeviceCapabilities(self):
+        data = XmlText().getDeviceCapabilitiesXml()
+        return self.req('GetDeviceCapabilities', data)
+
+    def getMediaInfo(self):
+        data = XmlText().getMediaInfoXml()
+        return self.req('GetMediaInfo', data)
+
+    def getCurrentTransportActions(self):
+        data = XmlText().getMediaInfoXml()
+        return self.req('GetCurrentTransportActions', data)
+
+    def getTransportInfo(self):
+        data = XmlText().getTransportInfoXml()
+        return self.req('GetTransportInfo', data)
+
+    def next(self):
+        data = XmlText().nextXml()
+        return self.req('Next', data)
+
+    def previous(self):
+        data = XmlText().previousXml()
+        return self.req('Previous', data)
+
+    def setPlayMode(self, playMode):
+        data = XmlText().setPlayModeXml(playMode)
+        return self.req('SetPlayMode', data)
+
+    def getMute(self):
+        data = XmlText().getMuteXml()
+        return self.req('GetMute', data)
+
+    def mute(self, mute):
+        data = XmlText().muteXml(mute)
+        return self.req('SetMute', data)
+
+    def getVolume(self):
+        data = XmlText().getVolumeXml()
+        return self.req('GetVolume', data)
+
+    def volume(self, volume):
+        data = XmlText().volumeXml(volume)
+        return self.req('SetVolume', data)
 
 
 class parser:
@@ -850,8 +1028,7 @@ class ListenWorker(threading.Thread):
         self.listen()
 
     def listen(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
-                          socket.IPPROTO_UDP)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         # 允许端口复用
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 0)
@@ -860,8 +1037,9 @@ class ListenWorker(threading.Thread):
         # 声明该socket为多播类型
         s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
         # 加入多播组，组地址由第三个参数制定
-        mreq = struct.pack("4sl", socket.inet_aton('239.255.255.250'),
-                           socket.INADDR_ANY)
+        mreq = struct.pack(
+            "4sl", socket.inet_aton('239.255.255.250'), socket.INADDR_ANY
+        )
         s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
         while True:
             try:
@@ -893,8 +1071,7 @@ class SearchWorker(threading.Thread):
         self.ondata = ondata
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp_socket.setblocking(False)
-        self.udp_socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP,
-                                   0)
+        self.udp_socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 0)
 
     def run(self):
         while True:
@@ -917,30 +1094,34 @@ class SearchWorker(threading.Thread):
             pass
 
     def search(self, st):
-        text = '\r\n'.join([
-            'M-SEARCH * HTTP/1.1',
-            'HOST: 239.255.255.250:1900',
-            'MAN: "ssdp:discover"',
-            'MX: 5',
-            'ST: {}'.format(st),
-            '',
-            '',
-        ])
+        text = '\r\n'.join(
+            [
+                'M-SEARCH * HTTP/1.1',
+                'HOST: 239.255.255.250:1900',
+                'MAN: "ssdp:discover"',
+                'MX: 5',
+                'ST: {}'.format(st),
+                '',
+                '',
+            ]
+        )
         self.sendUdp(text)
 
     def sendNotify(self, nt):
-        text = '\r\n'.join([
-            'NOTIFY * HTTP/1.1',
-            'HOST: 239.255.255.250:1900',
-            'CACHE-CONTROL: max-age=30',
-            'LOCATION: http://{}:{}/dlna/info.xml'.format(localIp, host[1]),
-            'NT: {}'.format(nt),
-            'NTS: ssdp:alive',
-            'SERVER: Python Dlna Server',
-            'USN: uuid:{}::{}'.format(uuid, nt),
-            '',
-            '',
-        ])
+        text = '\r\n'.join(
+            [
+                'NOTIFY * HTTP/1.1',
+                'HOST: 239.255.255.250:1900',
+                'CACHE-CONTROL: max-age=30',
+                'LOCATION: http://{}:{}/dlna/info.xml'.format(localIp, host[1]),
+                'NT: {}'.format(nt),
+                'NTS: ssdp:alive',
+                'SERVER: Python Dlna Server',
+                'USN: uuid:{}::{}'.format(uuid, nt),
+                '',
+                '',
+            ]
+        )
         self.sendUdp(text)
 
 
@@ -1008,7 +1189,8 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith('/seek'):
                 return self.seek(query)
             if path.startswith(
-                    '/dlna/_urn:schemas-upnp-org:service:AVTransport_control'):
+                '/dlna/_urn:schemas-upnp-org:service:AVTransport_control'
+            ):
                 body = self.rfile.read(int(self.headers['content-length']))
                 return self.execPlay(body.decode())
 
@@ -1237,8 +1419,9 @@ if __name__ == '__main__':
     try:
         localIp = getLocalIp()
         host = (localIp, 8888)
-        xmlreplayer = XmlReplay(localIp, host[1],
-                                "dlna({}:{})".format(localIp, host[1]))
+        xmlreplayer = XmlReplay(
+            localIp, host[1], "dlna({}:{})".format(localIp, host[1])
+        )
         dlna = Dlna()
         dlna.start()
         server = ThreadingSimpleServer(host, Handler)
