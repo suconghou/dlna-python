@@ -94,7 +94,7 @@ class XmlReplay:
 
     def alive(self):
         GMT_FORMAT = '%a, %d %b %Y %H:%M:%S GMT'
-        date = datetime.datetime.utcnow().strftime(GMT_FORMAT)
+        date = datetime.datetime.now(datetime.UTC).strftime(GMT_FORMAT)
         st = 'urn:schemas-upnp-org:device:MediaRenderer:1'
         return '\r\n'.join(
             [
@@ -114,6 +114,10 @@ class XmlReplay:
     def desc(self):
         return '''<root
     xmlns="urn:schemas-upnp-org:device-1-0">
+    <specVersion>
+        <major>1</major>
+        <minor>0</minor>
+    </specVersion>
     <device>
         <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
         <presentationURL>/</presentationURL>
@@ -123,15 +127,22 @@ class XmlReplay:
         <modelDescription>python dlna</modelDescription>
         <modelName>python dlna</modelName>
         <modelURL>https://github.com/suconghou/dlna-python</modelURL>
-        <UPC>000000000013</UPC>
+        <UPC>000000000000</UPC>
         <UDN>uuid:{}</UDN>
         <serviceList>
             <service>
                 <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
                 <serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
-                <SCPDURL>/dlna/Render/AVTransport_scpd.xml</SCPDURL>
+                <SCPDURL>/dlna/AVTransport_scpd.xml</SCPDURL>
                 <controlURL>/dlna/_urn:schemas-upnp-org:service:AVTransport_control</controlURL>
                 <eventSubURL>/dlna/_urn:schemas-upnp-org:service:AVTransport_event</eventSubURL>
+            </service>
+            <service>
+                <serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType>
+                <serviceId>urn:upnp-org:serviceId:RenderingControl</serviceId>
+                <SCPDURL>/dlna/RenderingControl_scpd.xml</SCPDURL>
+                <controlURL>/dlna/_urn:schemas-upnp-org:service:RenderingControl_control</controlURL>
+                <eventSubURL>/dlna/_urn:schemas-upnp-org:service:RenderingControl_event</eventSubURL>
             </service>
         </serviceList>
     </device>
@@ -234,8 +245,8 @@ s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
     def seekresp(self):
         return "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><s:Body><u:SeekResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"></u:SeekResponse></s:Body></s:Envelope>"
 
-    def scpd(self):
-        AVTransport_SCPD = '''<?xml version="1.0" encoding="utf-8"?>
+    def AVTransport_scpd(self):
+        text = '''<?xml version="1.0" encoding="utf-8"?>
 <scpd xmlns="urn:schemas-upnp-org:service-1-0">
   <specVersion>
     <major>1</major>
@@ -605,8 +616,341 @@ s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
     </stateVariable>
   </serviceStateTable>
 </scpd>'''
-        return AVTransport_SCPD
+        return text
 
+
+    def RenderingControl_scpd(self):
+        text = '''<scpd xmlns="urn:schemas-upnp-org:service-1-0">
+    <specVersion>
+        <major>1</major>
+        <minor>0</minor>
+    </specVersion>
+    <actionList>
+        <action>
+            <name>GetMute</name>
+            <argumentList>
+                <argument>
+                    <name>InstanceID</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>Channel</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>CurrentMute</name>
+                    <direction>out</direction>
+                    <relatedStateVariable>Mute</relatedStateVariable>
+                </argument>
+            </argumentList>
+        </action>
+        <action>
+            <name>GetVolume</name>
+            <argumentList>
+                <argument>
+                    <name>InstanceID</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>Channel</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>CurrentVolume</name>
+                    <direction>out</direction>
+                    <relatedStateVariable>Volume</relatedStateVariable>
+                </argument>
+            </argumentList>
+        </action>
+        <action>
+            <name>GetVolumeDB</name>
+            <argumentList>
+                <argument>
+                    <name>InstanceID</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>Channel</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>CurrentVolume</name>
+                    <direction>out</direction>
+                    <relatedStateVariable>VolumeDB</relatedStateVariable>
+                </argument>
+            </argumentList>
+        </action>
+        <action>
+            <name>GetVolumeDBRange</name>
+            <argumentList>
+                <argument>
+                    <name>InstanceID</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>Channel</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>MinValue</name>
+                    <direction>out</direction>
+                    <relatedStateVariable>VolumeDB</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>MaxValue</name>
+                    <direction>out</direction>
+                    <relatedStateVariable>VolumeDB</relatedStateVariable>
+                </argument>
+            </argumentList>
+        </action>
+        <action>
+            <name>ListPresets</name>
+            <argumentList>
+                <argument>
+                    <name>InstanceID</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>CurrentPresetNameList</name>
+                    <direction>out</direction>
+                    <relatedStateVariable>PresetNameList</relatedStateVariable>
+                </argument>
+            </argumentList>
+        </action>
+        <action>
+            <name>SelectPreset</name>
+            <argumentList>
+                <argument>
+                    <name>InstanceID</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>PresetName</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_PresetName</relatedStateVariable>
+                </argument>
+            </argumentList>
+        </action>
+        <action>
+            <name>SetMute</name>
+            <argumentList>
+                <argument>
+                    <name>InstanceID</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>Channel</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>DesiredMute</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>Mute</relatedStateVariable>
+                </argument>
+            </argumentList>
+        </action>
+        <action>
+            <name>SetVolume</name>
+            <argumentList>
+                <argument>
+                    <name>InstanceID</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>Channel</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>DesiredVolume</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>Volume</relatedStateVariable>
+                </argument>
+            </argumentList>
+        </action>
+    </actionList>
+    <serviceStateTable>
+        <stateVariable sendEvents="no">
+            <name>GreenVideoGain</name>
+            <dataType>ui2</dataType>
+            <allowedValueRange>
+                <minimum>0</minimum>
+                <maximum>100</maximum>
+                <step>1</step>
+            </allowedValueRange>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>BlueVideoBlackLevel</name>
+            <dataType>ui2</dataType>
+            <allowedValueRange>
+                <minimum>0</minimum>
+                <maximum>100</maximum>
+                <step>1</step>
+            </allowedValueRange>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>VerticalKeystone</name>
+            <dataType>i2</dataType>
+            <allowedValueRange>
+                <minimum>-32768</minimum>
+                <maximum>32767</maximum>
+                <step>1</step>
+            </allowedValueRange>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>GreenVideoBlackLevel</name>
+            <dataType>ui2</dataType>
+            <allowedValueRange>
+                <minimum>0</minimum>
+                <maximum>100</maximum>
+                <step>1</step>
+            </allowedValueRange>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>Volume</name>
+            <dataType>ui2</dataType>
+            <allowedValueRange>
+                <minimum>0</minimum>
+                <maximum>100</maximum>
+                <step>1</step>
+            </allowedValueRange>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>Loudness</name>
+            <dataType>boolean</dataType>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>A_ARG_TYPE_InstanceID</name>
+            <dataType>ui4</dataType>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>RedVideoGain</name>
+            <dataType>ui2</dataType>
+            <allowedValueRange>
+                <minimum>0</minimum>
+                <maximum>100</maximum>
+                <step>1</step>
+            </allowedValueRange>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>ColorTemperature</name>
+            <dataType>ui2</dataType>
+            <allowedValueRange>
+                <minimum>0</minimum>
+                <maximum>65535</maximum>
+                <step>1</step>
+            </allowedValueRange>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>Sharpness</name>
+            <dataType>ui2</dataType>
+            <allowedValueRange>
+                <minimum>0</minimum>
+                <maximum>100</maximum>
+                <step>1</step>
+            </allowedValueRange>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>A_ARG_TYPE_PresetName</name>
+            <dataType>string</dataType>
+            <allowedValueList>
+                <allowedValue>FactoryDefaults</allowedValue>
+                <allowedValue>InstallationDefaults</allowedValue>
+                <allowedValue>Vendor defined</allowedValue>
+            </allowedValueList>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>RedVideoBlackLevel</name>
+            <dataType>ui2</dataType>
+            <allowedValueRange>
+                <minimum>0</minimum>
+                <maximum>100</maximum>
+                <step>1</step>
+            </allowedValueRange>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>BlueVideoGain</name>
+            <dataType>ui2</dataType>
+            <allowedValueRange>
+                <minimum>0</minimum>
+                <maximum>100</maximum>
+                <step>1</step>
+            </allowedValueRange>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>Mute</name>
+            <dataType>boolean</dataType>
+        </stateVariable>
+        <stateVariable sendEvents="yes">
+            <name>LastChange</name>
+            <dataType>string</dataType>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>A_ARG_TYPE_Channel</name>
+            <dataType>string</dataType>
+            <allowedValueList>
+                <allowedValue>Master</allowedValue>
+                <allowedValue>LF</allowedValue>
+                <allowedValue>RF</allowedValue>
+            </allowedValueList>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>HorizontalKeystone</name>
+            <dataType>i2</dataType>
+            <allowedValueRange>
+                <minimum>-32768</minimum>
+                <maximum>32767</maximum>
+                <step>1</step>
+            </allowedValueRange>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>VolumeDB</name>
+            <dataType>i2</dataType>
+            <allowedValueRange>
+                <minimum>-32768</minimum>
+                <maximum>32767</maximum>
+            </allowedValueRange>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>PresetNameList</name>
+            <dataType>string</dataType>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>Contrast</name>
+            <dataType>ui2</dataType>
+            <allowedValueRange>
+                <minimum>0</minimum>
+                <maximum>100</maximum>
+                <step>1</step>
+            </allowedValueRange>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>Brightness</name>
+            <dataType>ui2</dataType>
+            <allowedValueRange>
+                <minimum>0</minimum>
+                <maximum>100</maximum>
+                <step>1</step>
+            </allowedValueRange>
+        </stateVariable>
+    </serviceStateTable>
+</scpd>
+'''
+        return text
+    
 
 class XmlText:
     def setPlayURLXml(self, url):
@@ -996,7 +1340,10 @@ class parser:
         if self.udp_socket is None:
             self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.udp_socket.setblocking(False)
-        self.udp_socket.sendto(data.encode(), self.address)
+        try:
+            self.udp_socket.sendto(data.encode(), self.address)
+        except Exception as e:
+            print("udp sendto error:"+str(e))
 
     # 别人发出了存活广播,我们在此过滤投屏设备
     def NOTIFY(self):
@@ -1165,8 +1512,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.info(query)
             if path.startswith('/dlna/info.xml'):
                 return self.respdesc()
-            if path.startswith('/dlna/Render/AVTransport_scpd.xml'):
-                return self.scpd()
+            if path.startswith('/dlna/AVTransport_scpd.xml'):
+                return self.AVTransport_scpd()
+            if path.startswith('/dlna/RenderingControl_scpd.xml'):
+                return self.RenderingControl_scpd()
 
             return self.index()
         except Exception as e:
@@ -1216,8 +1565,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data.encode())
 
-    def scpd(self):
-        data = xmlreplayer.scpd()
+    def AVTransport_scpd(self):
+        data = xmlreplayer.AVTransport_scpd()
+        self.send_response(200)
+        self.send_header('Content-type', 'text/xml')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(data.encode())
+
+    def RenderingControl_scpd(self):
+        data = xmlreplayer.RenderingControl_scpd()
         self.send_response(200)
         self.send_header('Content-type', 'text/xml')
         self.send_header('Access-Control-Allow-Origin', '*')
