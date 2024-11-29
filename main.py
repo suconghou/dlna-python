@@ -94,7 +94,7 @@ class XmlReplay:
 
     def alive(self):
         GMT_FORMAT = '%a, %d %b %Y %H:%M:%S GMT'
-        date = datetime.datetime.now(datetime.UTC).strftime(GMT_FORMAT)
+        date = datetime.datetime.now(datetime.timezone.utc).strftime(GMT_FORMAT)
         st = 'urn:schemas-upnp-org:device:MediaRenderer:1'
         return '\r\n'.join(
             [
