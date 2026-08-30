@@ -3,7 +3,6 @@
 import socket
 import sys
 import re
-from functools import lru_cache
 import subprocess
 import datetime
 from random import randint
@@ -18,7 +17,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import xml.etree.ElementTree as ET
 
-player = "ffplay.exe -fs" if sys.platform == 'win32' else "ffplay -fs"  # or "mpv -fs"
+player = ["ffplay", "-fs"]  # or ["mpv", "--fullscreen"]
 
 uuid = "27d6877e-{}-ea12-abdf-cf8d50e36d54".format(randint(1000, 9999))
 
@@ -26,11 +25,18 @@ rendering_control = {'SetMute', 'GetMute', 'SetVolume', 'GetVolume'}
 
 
 def getLocalIp():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("119.29.29.29", 80))
-    ip = s.getsockname()[0]
-    s.close()
-    return ip
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("119.29.29.29", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        # 无外网或UDP被拦截时兜底,本工具本身是局域网工具,不应直接崩溃退出
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except Exception:
+            return "127.0.0.1"
 
 
 def htmlEncode(text):
@@ -40,16 +46,28 @@ def htmlEncode(text):
     return text
 
 
-@lru_cache(maxsize=8)
+# 仅缓存成功结果,失败(如设备瞬时繁忙)不缓存,否则设备会一直拉不到
+_reqCache = {}
+_reqCacheMax = 64
+
+
 def ReqGet(url):
+    if url in _reqCache:
+        return _reqCache[url]
     try:
         try:
             res = request.urlopen(url, timeout=5)
-            return res.read()
+            data = res.read()
         except error.HTTPError as e:
             print("request " + url + " error ", e)
             print(e.geturl(), e.read())
             return None
+        except Exception as e:
+            return None
+        _reqCache[url] = data
+        if len(_reqCache) > _reqCacheMax:
+            _reqCache.pop(next(iter(_reqCache)))
+        return data
     except Exception as e:
         return None
 
@@ -973,7 +991,7 @@ class XmlText:
     </item>
 </DIDL-Lite>
 '''.format(
-            title
+            htmlEncode(title)
         )
         return '''<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
@@ -1337,11 +1355,11 @@ class parser:
     # 收到别人的查询消息
     def MSEARCH(self):
         data = xmlreplayer.alive()
-        if self.udp_socket is None:
-            self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.udp_socket.setblocking(False)
+        # 每个SSDP包都会新建parser实例,socket必须即发即关,否则持续泄漏文件描述符
         try:
-            self.udp_socket.sendto(data.encode(), self.address)
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.sendto(data.encode(), self.address)
+            s.close()
         except Exception as e:
             print("udp sendto error:"+str(e))
 
@@ -1431,14 +1449,23 @@ class SearchWorker(threading.Thread):
             self.sendNotify("upnp:rootdevice")
 
     def sendUdp(self, data):
+        udp_socket = self.udp_socket
         try:
-            udp_socket = self.udp_socket
             udp_socket.sendto(data.encode(), ('239.255.255.250', 1900))
-            time.sleep(1)
-            data, address = udp_socket.recvfrom(2048)
-            self.ondata(data, address, udp_socket)
-        except BlockingIOError as e:
-            pass
+        except Exception as e:
+            print("udp send error:"+str(e))
+            return
+        # MX窗口内循环收取响应,否则多设备场景下每个M-SEARCH只读到一条回复,会漏发现设备
+        # socket是非阻塞的,窗口外晚到的响应会留在缓冲区,被下一轮sendUdp读走
+        deadline = time.time() + 2
+        while time.time() < deadline:
+            try:
+                data, address = udp_socket.recvfrom(2048)
+                self.ondata(data, address, udp_socket)
+            except BlockingIOError:
+                time.sleep(0.1)
+            except Exception as e:
+                break
 
     def search(self, st):
         text = '\r\n'.join(
@@ -1492,7 +1519,7 @@ class Dlna:
 
 
 class ThreadingSimpleServer(ThreadingMixIn, HTTPServer):
-    pass
+    daemon_threads = True
 
 
 class PlayStatus:
@@ -1592,7 +1619,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         if 'u:Stop' in data:
             if PlayStatus.playing:
-                PlayStatus.playing.kill()
+                try:
+                    PlayStatus.playing.kill()
+                    PlayStatus.playing.wait()
+                except Exception:
+                    pass
                 PlayStatus.stoped = True
                 print('local stop ', PlayStatus.url)
             data = xmlreplayer.stop()
@@ -1652,10 +1683,15 @@ class Handler(BaseHTTPRequestHandler):
             self.notfound()
             return
         print('local play ', url)
-        ret = subprocess.Popen('{} "{}"'.format(player, url), shell=True)
-        print(ret)
+        # 先停掉上一个播放进程再启动,避免短暂双实例抢占音频设备
         if PlayStatus.playing:
-            PlayStatus.playing.kill()
+            try:
+                PlayStatus.playing.kill()
+                PlayStatus.playing.wait()
+            except Exception:
+                pass
+        # URL作为独立参数传入,严禁拼接shell字符串,否则局域网内构造的URL可导致命令注入
+        ret = subprocess.Popen(player + [url])
         PlayStatus.playing = ret  # type: ignore
         PlayStatus.stoped = False
         PlayStatus.url = url
